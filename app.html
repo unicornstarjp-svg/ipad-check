@@ -76,7 +76,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   <div class="card">
     <h2>きょうの予定</h2>
     <div id="today"></div>
-    <div class="row"><button type="button" class="big small" id="btn-read" style="width:auto">予定を読んでもらう</button></div>
+    <div class="row"><button type="button" class="big small" id="btn-read" style="width:auto">予定を読んでもらう</button><button type="button" class="big small" id="btn-add-sched" style="width:auto">予定を足す（話す）</button></div>
   </div>
 
   <div class="card" id="soon-card" hidden>
@@ -97,6 +97,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   <div class="row"><button type="button" class="big small" data-back="home" style="width:auto">もどる</button></div>
   <h2 style="margin-top:18px">だれの歌にしますか</h2>
   <div class="grid" id="singers"></div>
+  <div class="row"><button type="button" class="big small" id="btn-add-singer" style="width:auto">歌手を足す（話す）</button></div>
 </section>
 
 <section id="v-play" hidden>
@@ -385,6 +386,61 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
       load().then(function () { show('home'); });
     }, function () { msg.textContent = 'つながりませんでした。URLとネットの状態を確かめてください。'; });
   });
+
+  /* ---------- 声で足す（話す→AIが整理→読み返して確認→書き込み） ---------- */
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var rec = null;
+  function stopListen() { if (rec) { try { rec.abort(); } catch (e) {} rec = null; } }
+  function addByVoice(mode) {
+    var cancel = function () { stopListen(); closeDialog(); };
+    if (!configured()) { dialog('先に設定が必要です。家族に伝えてください。', [{ label: 'とじる', fn: closeDialog }]); return; }
+    if (!SR) { dialog('このiPadでは声が使えません。家族に伝えてください。', [{ label: 'とじる', fn: closeDialog }]); return; }
+    var again = function () { addByVoice(mode); };
+    var failed = function (msg) {
+      dialog(msg, [{ label: 'もう一度', cls: 'song', fn: again }, { label: 'やめる', fn: closeDialog }]);
+    };
+    dialog(mode === 'schedule' ? '予定を話してください。たとえば「来週の火曜、10時に病院」' : '歌手の名前を話してください', [{ label: 'やめる', fn: cancel }]);
+    var heard = '';
+    rec = new SR();
+    rec.lang = 'ja-JP'; rec.interimResults = false; rec.maxAlternatives = 1; rec.continuous = false;
+    rec.onresult = function (ev) { heard = ev.results[0][0].transcript; };
+    rec.onerror = function (ev) { if (ev.error !== 'aborted') { rec = null; failed('聞きとれませんでした。'); } };
+    rec.onend = function () {
+      if (!rec) return;
+      rec = null;
+      if (!heard.trim()) { failed('聞きとれませんでした。'); return; }
+      dialog('「' + heard + '」…考えています', []);
+      api({ kind: 'parse', mode: mode, text: heard }).then(function (r) {
+        if (!r || !r.ok) { failed('うまく分かりませんでした。'); return; }
+        var q, send;
+        if (mode === 'schedule') {
+          var m = r.date.split('/'), dt = new Date(+m[0], +m[1] - 1, +m[2]);
+          q = (+m[1]) + '月' + (+m[2]) + '日（' + WEEK[dt.getDay()] + '）' + (r.time ? spokenTime(r.time) + 'に、' : '、') + r.content + '。これでいいですか？';
+          send = { kind: 'addSchedule', date: r.date, time: r.time, content: r.content, note: r.note };
+        } else {
+          q = r.name + '。これでいいですか？';
+          send = { kind: 'addSinger', name: r.name };
+        }
+        speak(q);
+        dialog(q, [
+          { label: 'はい', cls: 'song', fn: function () {
+            dialog('書いています…', []);
+            api(send).then(function (w) {
+              if (!w || !w.ok) { failed('書けませんでした。'); return; }
+              speak('書きました。');
+              dialog('書きました。', [{ label: 'とじる', fn: closeDialog }]);
+              load();
+            }, function () { failed('つながりませんでした。'); });
+          } },
+          { label: 'もう一度', fn: again },
+          { label: 'やめる', fn: closeDialog }
+        ]);
+      }, function () { failed('つながりませんでした。'); });
+    };
+    try { rec.start(); } catch (e) { rec = null; failed('声を使えませんでした。'); }
+  }
+  $('btn-add-sched').addEventListener('click', function () { addByVoice('schedule'); });
+  $('btn-add-singer').addEventListener('click', function () { addByVoice('singer'); });
 
   /* ---------- 起動 ---------- */
   function renderAll() { renderSchedule(); renderSingers(); }
