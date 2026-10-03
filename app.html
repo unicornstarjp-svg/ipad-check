@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="おたすけ">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>おたすけ</title>
+<link rel="apple-touch-icon" href="icon.png">
+<style>
+:root{
+  --bg:#EEF3F6; --card:#FFFFFF; --text:#1B2B3A; --muted:#4B5D6B; --line:#C5D3DC;
+  --accent:#C2410C; --accent-text:#FFFFFF; --blue:#0F5F7A; --chip:#E1EAF0;
+  --bad:#B42318; --bad-text:#FFFFFF;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10181F; --card:#18232C; --text:#E8EEF2; --muted:#A9B8C3; --line:#2E3E4A;
+    --accent:#F0824F; --accent-text:#1B1209; --blue:#6CC3DE; --chip:#22313C;
+    --bad:#FF8A7A; --bad-text:#2A0B07;
+  }
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Hiragino Sans","Yu Gothic",sans-serif;font-size:22px;line-height:1.6;
+  padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+main{max-width:820px;margin:0 auto;padding:20px 16px 48px}
+[hidden]{display:none!important}
+h1{font-size:34px;line-height:1.3;margin:0;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+h2{font-size:26px;line-height:1.4;margin:0 0 10px}
+p{margin:0 0 12px}
+.muted{color:var(--muted)}
+.date{font-size:28px;font-weight:700;margin-top:4px}
+.clock{font-size:56px;font-weight:700;line-height:1.2}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;margin-top:18px}
+.status{margin-top:12px;font-size:20px;color:var(--muted)}
+.item{display:flex;gap:16px;align-items:baseline;padding:12px 0;border-top:1px solid var(--line)}
+.item:first-of-type{border-top:0}
+.item .when{min-width:5.5em;font-weight:700;color:var(--blue)}
+.item .what{font-weight:700}
+.item .note{display:block;font-weight:400;color:var(--muted);font-size:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:18px}
+.big{display:flex;align-items:center;justify-content:center;text-align:center;min-height:100px;padding:12px 18px;border:3px solid var(--blue);border-radius:18px;
+  background:var(--card);color:var(--blue);font:inherit;font-size:28px;font-weight:700;text-decoration:none;cursor:pointer;width:100%}
+.big.song{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+.big.help{background:var(--bad);border-color:var(--bad);color:var(--bad-text)}
+.big.wide{grid-column:1/-1}
+.small{min-height:76px;font-size:26px}
+.thumbs{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:14px}
+.thumb{padding:0;border:3px solid var(--blue);border-radius:16px;background:var(--card);overflow:hidden;cursor:pointer;font:inherit;color:var(--text)}
+.thumb img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:var(--chip)}
+.thumb span{display:block;padding:8px;font-weight:700;font-size:22px}
+.player{margin-top:14px;aspect-ratio:16/9;width:100%;background:#000;border-radius:16px;overflow:hidden}
+.player iframe{width:100%;height:100%;border:0}
+.row{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px;align-items:center}
+label{display:block;font-weight:700;margin:14px 0 6px;font-size:20px}
+input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;font-size:20px;padding:12px;border:2px solid var(--line);border-radius:12px;background:var(--card);color:var(--text)}
+.set-msg{margin-top:12px;font-size:20px}
+.dlg{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px;z-index:10}
+.dlg .box{background:var(--card);border-radius:20px;padding:26px;max-width:560px;width:100%}
+.dlg .box p{font-size:28px;font-weight:700}
+.dlg .grid{margin-top:14px}
+</style>
+</head>
+<body>
+<main>
+
+<section id="v-home">
+  <h1 id="greet">こんにちは</h1>
+  <div class="date" id="date"></div>
+  <div class="clock" id="clock"></div>
+  <div class="status" id="status" role="status"></div>
+
+  <div class="card">
+    <h2>きょうの予定</h2>
+    <div id="today"></div>
+    <div class="row"><button type="button" class="big small" id="btn-read" style="width:auto">予定を読んでもらう</button></div>
+  </div>
+
+  <div class="card" id="soon-card" hidden>
+    <h2>これからの予定</h2>
+    <div id="soon"></div>
+  </div>
+
+  <div class="grid">
+    <button type="button" class="big song wide" id="btn-songs">歌を聴く</button>
+    <a class="big" href="https://tver.jp/">TVer</a>
+    <a class="big" href="https://www.primevideo.com/">Amazonプライム</a>
+    <a class="big" href="https://mitene.us/">みてね</a>
+    <button type="button" class="big help" id="btn-help">困った</button>
+  </div>
+</section>
+
+<section id="v-songs" hidden>
+  <div class="row"><button type="button" class="big small" data-back="home" style="width:auto">もどる</button></div>
+  <h2 style="margin-top:18px">だれの歌にしますか</h2>
+  <div class="grid" id="singers"></div>
+</section>
+
+<section id="v-play" hidden>
+  <div class="row"><button type="button" class="big small" id="btn-play-back" style="width:auto">もどる</button></div>
+  <h2 style="margin-top:18px" id="play-title"></h2>
+  <div class="player" id="player" hidden></div>
+  <div class="thumbs" id="thumbs"></div>
+  <div class="row"><a class="big small" id="yt-search" target="_blank" rel="noopener" style="width:auto">YouTubeでさがす</a></div>
+</section>
+
+<section id="v-set" hidden>
+  <h2>設定（家族用）</h2>
+  <p class="muted">スプレッドシートの窓口のURLと、あいことばを入れます。このiPadの中だけに保存されます。</p>
+  <label for="set-url">窓口のURL</label>
+  <input type="url" id="set-url" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="https://script.google.com/macros/s/…/exec">
+  <label for="set-token">あいことば</label>
+  <input type="password" id="set-token" autocapitalize="off" autocorrect="off">
+  <div class="row">
+    <button type="button" class="big small" id="set-save" style="width:auto">保存してためす</button>
+    <button type="button" class="big small" data-back="home" style="width:auto">もどる</button>
+  </div>
+  <div class="set-msg" id="set-msg" role="status"></div>
+</section>
+
+</main>
+
+<div class="dlg" id="dlg" hidden>
+  <div class="box">
+    <p id="dlg-text"></p>
+    <div class="grid" id="dlg-btns"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
+  var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
+  var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
+  var cfg = readJSON(KEY_CFG) || {};
+  var data = {};
+
+  function readJSON(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+  function writeJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  function configured() { return !!(cfg.u && cfg.t && ENDPOINT_RE.test(cfg.u)); }
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+
+  /* ---------- 画面の切り替え ---------- */
+  var views = ['home', 'songs', 'play', 'set'];
+  function show(name) {
+    views.forEach(function (v) { $('v-' + v).hidden = (v !== name); });
+    if (name !== 'play') stopPlayer();
+    window.scrollTo(0, 0);
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('[data-back]'), function (b) {
+    b.addEventListener('click', function () { show(b.getAttribute('data-back')); });
+  });
+
+  /* ---------- あいさつ・日付・時計 ---------- */
+  function tick() {
+    var d = new Date(), h = d.getHours();
+    $('greet').textContent = h < 5 ? 'こんばんは' : h < 11 ? 'おはようございます' : h < 17 ? 'こんにちは' : 'こんばんは';
+    $('date').textContent = (d.getMonth() + 1) + '月' + d.getDate() + '日（' + WEEK[d.getDay()] + '）';
+    var m = d.getMinutes();
+    $('clock').textContent = (h < 12 ? '午前 ' : '午後 ') + (h % 12 || 12) + ':' + (m < 10 ? '0' : '') + m;
+  }
+
+  /* ---------- 窓口との通信 ---------- */
+  function api(body) {
+    var ctl = ('AbortController' in window) ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 20000);
+    var url = cfg.u, opt = ctl ? { signal: ctl.signal } : {};
+    if (body) {
+      body.token = cfg.t;
+      opt.method = 'POST';
+      opt.headers = { 'Content-Type': 'text/plain;charset=utf-8' };
+      opt.body = JSON.stringify(body);
+    } else {
+      url += '?token=' + encodeURIComponent(cfg.t);
+    }
+    return fetch(url, opt).then(function (r) { clearTimeout(timer); return r.json(); },
+                                function (e) { clearTimeout(timer); throw e; });
+  }
+  function setStatus(t) { $('status').textContent = t; }
+
+  function load() {
+    if (!configured()) { openSettings(''); return Promise.resolve(); }
+    return api().then(function (d) {
+      if (d.error) throw new Error(d.error);
+      data = d;
+      writeJSON(KEY_CACHE, { at: Date.now(), data: d });
+      setStatus('');
+      renderAll();
+    }).catch(function (e) {
+      var c = readJSON(KEY_CACHE);
+      data = (c && c.data) || {};
+      renderAll();
+      if (e.message === 'unauthorized') setStatus('あいことばが合っていません。（家族の人は設定をなおしてください）');
+      else if (c && c.data) setStatus('いま、ネットにつながっていません。前に見たときの予定を出しています。');
+      else setStatus('予定をよみこめませんでした。');
+    });
+  }
+
+  /* ---------- 予定 ---------- */
+  function parseDate(s) {
+    s = (s || '').trim();
+    var m, y, mo, d;
+    if ((m = s.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/))) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else if ((m = s.match(/(\d{1,2})\D+(\d{1,2})/))) { y = new Date().getFullYear(); mo = +m[1]; d = +m[2]; }
+    else return null;
+    var dt = new Date(y, mo - 1, d);
+    return dt.getMonth() === mo - 1 ? dt : null;
+  }
+  function spokenTime(t) {
+    var m = (t || '').match(/(\d{1,2})\D+(\d{2})/);
+    if (!m) return t || '';
+    return (+m[1]) + '時' + (m[2] === '00' ? '' : (+m[2]) + '分');
+  }
+  var todayItems = [];
+  function renderSchedule() {
+    var rows = data['予定'] || [], now = new Date();
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var t = [], soon = [];
+    rows.forEach(function (r) {
+      var dt = parseDate(r['日付']);
+      if (!dt || !(r['内容'] || '').trim()) return;
+      var diff = Math.round((dt - today) / 864e5);
+      if (diff === 0) t.push({ dt: dt, r: r });
+      else if (diff > 0 && diff <= 7) soon.push({ dt: dt, r: r });
+    });
+    var byTime = function (a, b) { return a.dt - b.dt || String(a.r['時刻']).localeCompare(String(b.r['時刻'])); };
+    t.sort(byTime); soon.sort(byTime);
+    todayItems = t;
+
+    function item(x, withDate) {
+      var row = el('div', 'item');
+      var when = withDate
+        ? (x.dt.getMonth() + 1) + '月' + x.dt.getDate() + '日（' + WEEK[x.dt.getDay()] + '）' + (x.r['時刻'] ? ' ' + x.r['時刻'] : '')
+        : (x.r['時刻'] || '');
+      row.appendChild(el('div', 'when', when));
+      var what = el('div', 'what', x.r['内容']);
+      if ((x.r['備考'] || '').trim()) what.appendChild(el('span', 'note', x.r['備考']));
+      row.appendChild(what);
+      return row;
+    }
+    var box = $('today'); clear(box);
+    if (!t.length) box.appendChild(el('p', 'muted', 'きょうの予定は、ありません。'));
+    t.forEach(function (x) { box.appendChild(item(x, false)); });
+    var sb = $('soon'); clear(sb);
+    soon.slice(0, 5).forEach(function (x) { sb.appendChild(item(x, true)); });
+    $('soon-card').hidden = !soon.length;
+  }
+
+  /* ---------- 読み上げ ---------- */
+  function speak(text) {
+    if (!('speechSynthesis' in window)) return;
+    try {
+      window.speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ja-JP'; u.rate = 0.9;
+      var v = window.speechSynthesis.getVoices().filter(function (x) { return /^ja/i.test(x.lang); });
+      if (v.length) u.voice = v[0];
+      window.speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+  $('btn-read').addEventListener('click', function () {
+    if (!todayItems.length) { speak('きょうの予定は、ありません。'); return; }
+    speak('きょうの予定は、' + todayItems.map(function (x) {
+      return (x.r['時刻'] ? spokenTime(x.r['時刻']) + 'に、' : '') + x.r['内容'];
+    }).join('。 ') + '、です。');
+  });
+
+  /* ---------- 歌手とYouTube ---------- */
+  function videoId(s) {
+    s = (s || '').trim();
+    if (/^[\w-]{11}$/.test(s)) return s;
+    var m = s.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{11})/);
+    return m ? m[1] : null;
+  }
+  function renderSingers() {
+    var box = $('singers'); clear(box);
+    var rows = (data['歌手'] || []).filter(function (r) { return (r['名前'] || '').trim(); });
+    if (!rows.length) { box.appendChild(el('p', 'muted', '歌手は、まだ登録されていません。')); return; }
+    rows.forEach(function (r) {
+      var b = el('button', 'big', r['名前']);
+      b.type = 'button';
+      b.addEventListener('click', function () { openSinger(r); });
+      box.appendChild(b);
+    });
+  }
+  function stopPlayer() {
+    var p = $('player'); clear(p); p.hidden = true;
+  }
+  function openSinger(r) {
+    $('play-title').textContent = r['名前'];
+    stopPlayer();
+    var box = $('thumbs'); clear(box);
+    ['動画1', '動画2', '動画3'].forEach(function (k, i) {
+      var id = videoId(r[k]);
+      if (!id) return;
+      var b = el('button', 'thumb'); b.type = 'button';
+      var img = el('img'); img.alt = ''; img.src = 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg';
+      b.appendChild(img); b.appendChild(el('span', null, (i + 1) + 'つめ'));
+      b.addEventListener('click', function () {
+        var p = $('player'); clear(p);
+        var f = el('iframe');
+        f.src = 'https://www.youtube.com/embed/' + id + '?playsinline=1&rel=0&autoplay=1';
+        f.title = r['名前'] + 'の動画';
+        f.setAttribute('allow', 'autoplay; encrypted-media; fullscreen');
+        p.appendChild(f); p.hidden = false;
+        p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      box.appendChild(b);
+    });
+    $('yt-search').href = 'https://www.youtube.com/results?search_query=' + encodeURIComponent((r['検索語'] || r['名前']).trim());
+    show('play');
+  }
+  $('btn-songs').addEventListener('click', function () { show('songs'); });
+  $('btn-play-back').addEventListener('click', function () { show('songs'); });
+
+  /* ---------- 困ったボタン ---------- */
+  function dialog(text, buttons) {
+    $('dlg-text').textContent = text;
+    var box = $('dlg-btns'); clear(box);
+    buttons.forEach(function (b) {
+      var n = el('button', 'big' + (b.cls ? ' ' + b.cls : ''), b.label); n.type = 'button';
+      n.addEventListener('click', b.fn);
+      box.appendChild(n);
+    });
+    $('dlg').hidden = false;
+  }
+  function closeDialog() { $('dlg').hidden = true; }
+  $('btn-help').addEventListener('click', function () {
+    dialog('家族に知らせますか？', [
+      { label: '知らせる', cls: 'help', fn: sendHelp },
+      { label: 'やめる', fn: closeDialog }
+    ]);
+  });
+  function sendHelp() {
+    speak('息子さんにも伝えておくね。');
+    dialog('家族に知らせています…', []);
+    var ok = function () { dialog('知らせました。少し待っていてね。', [{ label: 'とじる', fn: closeDialog }]); };
+    var ng = function () { dialog('つながりませんでした。電話をかけてみてね。', [{ label: 'とじる', fn: closeDialog }]); };
+    if (!configured()) { ng(); return; }
+    api({ kind: 'help', text: '「困った」ボタンが押されました' }).then(function (r) { if (r && r.ok) ok(); else ng(); }, ng);
+  }
+
+  /* ---------- 設定（タイトルを長押し） ---------- */
+  function openSettings(msg) {
+    $('set-url').value = cfg.u || '';
+    $('set-token').value = cfg.t || '';
+    $('set-msg').textContent = msg || '';
+    show('set');
+  }
+  var pressTimer = null;
+  var title = $('greet');
+  function pressStart() { pressTimer = setTimeout(function () { openSettings(''); }, 900); }
+  function pressEnd() { clearTimeout(pressTimer); }
+  title.addEventListener('touchstart', pressStart, { passive: true });
+  title.addEventListener('touchend', pressEnd);
+  title.addEventListener('touchmove', pressEnd, { passive: true });
+  title.addEventListener('touchcancel', pressEnd);
+  title.addEventListener('mousedown', pressStart);
+  title.addEventListener('mouseup', pressEnd);
+  title.addEventListener('mouseleave', pressEnd);
+  title.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  $('set-save').addEventListener('click', function () {
+    var u = $('set-url').value.trim(), t = $('set-token').value.trim();
+    var msg = $('set-msg');
+    if (!ENDPOINT_RE.test(u)) { msg.textContent = 'URLが違います。https://script.google.com/macros/s/…/exec の形で入れてください。'; return; }
+    if (!t) { msg.textContent = 'あいことばを入れてください。'; return; }
+    cfg = { u: u, t: t };
+    msg.textContent = 'ためしています…';
+    api().then(function (d) {
+      if (d.error) { msg.textContent = 'あいことばが合っていません。'; return; }
+      writeJSON(KEY_CFG, cfg);
+      msg.textContent = 'つながりました。';
+      load().then(function () { show('home'); });
+    }, function () { msg.textContent = 'つながりませんでした。URLとネットの状態を確かめてください。'; });
+  });
+
+  /* ---------- 起動 ---------- */
+  function renderAll() { renderSchedule(); renderSingers(); }
+
+  (function importHash() {
+    var h = location.hash.replace(/^#/, '');
+    if (!h) return;
+    var u = null, t = null;
+    h.split('&').forEach(function (p) {
+      var i = p.indexOf('='); if (i < 0) return;
+      var k = p.slice(0, i), v = decodeURIComponent(p.slice(i + 1));
+      if (k === 'u') u = v;
+      if (k === 't') t = v;
+    });
+    if (u && t && ENDPOINT_RE.test(u)) { cfg = { u: u, t: t }; writeJSON(KEY_CFG, cfg); }
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  })();
+
+  tick();
+  setInterval(tick, 20000);
+  var cached = readJSON(KEY_CACHE);
+  if (cached && cached.data) { data = cached.data; renderAll(); }
+  load();
+  setInterval(load, 10 * 60 * 1000);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') { tick(); if (configured()) load(); }
+  });
+})();
+</script>
+</body>
+</html>
