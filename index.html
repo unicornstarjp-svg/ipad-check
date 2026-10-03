@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>iPad動作確認ページ</title>
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#EEF3F6; --card:#FFFFFF; --text:#1B2B3A; --muted:#4B5D6B; --line:#C5D3DC;
+  --accent:#C2410C; --accent-text:#FFFFFF; --blue:#0F5F7A; --chip:#E1EAF0;
+  --ok:#1F7A4D; --warn:#8A5200; --bad:#B42318;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10181F; --card:#18232C; --text:#E8EEF2; --muted:#A9B8C3; --line:#2E3E4A;
+    --accent:#F0824F; --accent-text:#1B1209; --blue:#6CC3DE; --chip:#22313C;
+    --ok:#5FD39A; --warn:#F0B35A; --bad:#FF8A7A;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10181F; --card:#18232C; --text:#E8EEF2; --muted:#A9B8C3; --line:#2E3E4A;
+  --accent:#F0824F; --accent-text:#1B1209; --blue:#6CC3DE; --chip:#22313C;
+  --ok:#5FD39A; --warn:#F0B35A; --bad:#FF8A7A;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Hiragino Sans","Yu Gothic",sans-serif;font-size:18px;line-height:1.6}
+main{max-width:760px;margin:0 auto;padding:24px 16px 56px}
+h1{font-size:28px;line-height:1.3;margin:0 0 8px}
+h2{font-size:22px;line-height:1.4;margin:0 0 8px}
+p{margin:0 0 12px}
+.lead{color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin-top:20px}
+.banner{border-radius:12px;padding:12px 16px;margin-top:16px;background:var(--chip);border:1px solid var(--line)}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:52px;padding:0 24px;border:2px solid var(--blue);border-radius:12px;background:var(--card);color:var(--blue);font:inherit;font-weight:700;text-decoration:none;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+.row{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;align-items:center}
+.out{margin-top:12px;padding:12px 16px;min-height:56px;border:2px dashed var(--line);border-radius:12px;white-space:pre-wrap;word-break:break-word}
+.small{font-size:15px;color:var(--muted)}
+label{display:block;font-weight:700;margin-top:12px}
+input[type=text],input[type=url],textarea{width:100%;min-height:52px;padding:10px 14px;border:2px solid var(--line);border-radius:12px;background:var(--bg);color:var(--text);font:inherit}
+textarea{min-height:120px}
+.env{display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px}
+.env div{display:flex;justify-content:space-between;gap:12px;padding:8px 12px;border-radius:10px;background:var(--bg)}
+.ok{color:var(--ok);font-weight:700}.warn{color:var(--warn);font-weight:700}.bad{color:var(--bad);font-weight:700}
+.marks{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.mark{min-height:48px;padding:0 16px;border:2px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);font:inherit;cursor:pointer}
+.mark[aria-pressed="true"]{border-color:var(--blue);background:var(--chip);font-weight:700}
+.frame{margin-top:12px;aspect-ratio:16/9;width:100%;border:2px dashed var(--line);border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.frame iframe{width:100%;height:100%;border:0}
+.appitem{padding:12px 0;border-top:1px solid var(--line)}
+.appitem:first-of-type{border-top:0}
+:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+<h1>iPad動作確認ページ</h1>
+<p class="lead">お母さん用の画面を作る前に、iPadで動くかを確かめるページです。上から順に試して、結果の印を付けてください。最後に、まとめの文章をコピーして、Claudeに貼ってください。</p>
+
+<div class="banner" id="banner" role="status"></div>
+
+<section class="card" aria-labelledby="h-env">
+<h2 id="h-env">0. この画面の状態（自動で調べます）</h2>
+<div class="env" id="env"></div>
+<p class="small" style="margin-top:12px">全画面で試すには、Safariの共有ボタンから「ホーム画面に追加」をして、そのアイコンから開いてください。ブラウザで開いた時と、ホーム画面から開いた時の両方で試すと、違いが分かります。</p>
+</section>
+
+<section class="card" aria-labelledby="h-t1">
+<h2 id="h-t1">1. 声の聞き取り</h2>
+<p>「話す」を押して、話してみてください。小さい声や、ゆっくりした話し方、好きな歌手の名前も試すと参考になります。</p>
+<div class="row"><button class="btn primary" id="btn-listen" type="button">話す</button></div>
+<div class="out" id="out-listen" aria-live="polite">ここに聞き取った言葉が出ます</div>
+<div class="small" id="err-listen" aria-live="polite"></div>
+<div class="marks" data-test="t1" data-label="声の聞き取り" data-options="○ 聞き取れた,△ 一部だけ,× 動かなかった"></div>
+</section>
+
+<section class="card" aria-labelledby="h-t2">
+<h2 id="h-t2">2. 返事の読み上げ</h2>
+<label for="speak-text">読み上げる文章</label>
+<textarea id="speak-text">こんにちは。今日は十月三日、土曜日です。午後二時に病院へ行く予定です。</textarea>
+<label for="speak-rate">速さ：<span id="rate-val">0.9</span></label>
+<input id="speak-rate" type="range" min="0.6" max="1.2" step="0.1" value="0.9" style="width:100%">
+<div class="row"><button class="btn primary" id="btn-speak" type="button">読み上げる</button><button class="btn" id="btn-stop" type="button">止める</button></div>
+<div class="small" id="err-speak" aria-live="polite" style="margin-top:12px"></div>
+<div class="marks" data-test="t2" data-label="返事の読み上げ" data-options="○ 聞き取りやすい,△ 聞きにくい,× 声が出なかった"></div>
+</section>
+
+<section class="card" aria-labelledby="h-t3">
+<h2 id="h-t3">3. YouTubeをページの中で再生</h2>
+<p>YouTubeの動画のURLを貼って、試してください。昔の歌手の公式動画と、歌詞つきカラオケの動画を、それぞれ試すのがおすすめです。</p>
+<label for="yt-url">YouTubeのURL</label>
+<input id="yt-url" type="url" inputmode="url" placeholder="https://www.youtube.com/watch?v=…">
+<div class="row"><button class="btn primary" id="btn-yt" type="button">再生を試す</button></div>
+<div class="frame" id="yt-frame">ここに動画が出ます</div>
+<div class="small" id="err-yt" aria-live="polite" style="margin-top:12px"></div>
+<div class="marks" data-test="t3" data-label="YouTubeの埋め込み再生" data-options="○ 再生できた,△ 動画によって不可,× 再生できなかった"></div>
+</section>
+
+<section class="card" aria-labelledby="h-t4">
+<h2 id="h-t4">4. 他のアプリを開く</h2>
+<p>ボタンを押して、アプリが開くか、Safariの新しいタブで開くかを確かめてください。アプリを試すには、そのアプリがこのiPadに入っている必要があります。入っていないものは「未確認」のままで構いません。アプリを開いた後は、このページに戻って、結果を選んでください。</p>
+<div id="apps"></div>
+</section>
+
+<section class="card" aria-labelledby="h-t5">
+<h2 id="h-t5">5. FaceTimeの発信</h2>
+<p>電話番号かApple IDのメールアドレスを入れて、発信のボタンを押してください。発信の確認が出るかも見てください。</p>
+<label for="ft-addr">発信先（電話番号またはメールアドレス）</label>
+<input id="ft-addr" type="text" inputmode="email" autocomplete="off" placeholder="例：+81…（自分のiPhoneなどで試せます）">
+<div class="row"><a class="btn primary" id="ft-link" href="#" aria-disabled="true">FaceTimeで発信</a></div>
+<div class="marks" data-test="t5" data-label="FaceTimeの発信" data-options="○ すぐ発信できた,△ 確認が出た,× 動かなかった"></div>
+</section>
+
+<section class="card" aria-labelledby="h-sum">
+<h2 id="h-sum">結果のまとめ</h2>
+<p>下の文章をコピーして、Claudeのチャットに貼ってください。気づいたことがあれば、追記してください。</p>
+<textarea id="summary" readonly aria-label="結果のまとめ"></textarea>
+<label for="memo">気づいたこと（任意）</label>
+<textarea id="memo" placeholder="例：小声だと途中で止まった、など"></textarea>
+<div class="row"><button class="btn primary" id="btn-copy" type="button">まとめをコピー</button></div>
+<div class="small" id="copy-msg" aria-live="polite" style="margin-top:12px"></div>
+</section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var RES_KEY = 'ipad-check-results-v1';
+  var results = {};
+  var memoryOnly = false;
+
+  function loadResults() {
+    try {
+      var s = window.localStorage.getItem(RES_KEY);
+      if (s) results = JSON.parse(s) || {};
+    } catch (e) { memoryOnly = true; }
+  }
+  function saveResults() {
+    try { window.localStorage.setItem(RES_KEY, JSON.stringify(results)); }
+    catch (e) { memoryOnly = true; }
+  }
+  function $(id) { return document.getElementById(id); }
+
+  /* ---------- 環境チェック ---------- */
+  function getEnv() {
+    var standalone = (window.navigator.standalone === true) ||
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    var inFrame = false;
+    try { inFrame = window.self !== window.top; } catch (e) { inFrame = true; }
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var synth = 'speechSynthesis' in window;
+    var voices = [];
+    try { voices = synth ? window.speechSynthesis.getVoices() : []; } catch (e) { voices = []; }
+    var ja = voices.filter(function (v) { return /^ja/i.test(v.lang); });
+    return { standalone: !!standalone, inFrame: inFrame, sr: !!SR, synth: synth, jaCount: ja.length, voiceCount: voices.length };
+  }
+  function envRow(label, text, cls) {
+    var row = document.createElement('div');
+    var l = document.createElement('span'); l.textContent = label;
+    var v = document.createElement('span'); v.textContent = text; v.className = cls || '';
+    row.appendChild(l); row.appendChild(v);
+    return row;
+  }
+  function renderEnv() {
+    var e = getEnv();
+    var box = $('env');
+    while (box.firstChild) box.removeChild(box.firstChild);
+    box.appendChild(envRow('ホーム画面から開いている', e.standalone ? 'はい（全画面）' : 'いいえ（ブラウザ）', e.standalone ? 'ok' : 'warn'));
+    box.appendChild(envRow('他の枠の中で表示されている', e.inFrame ? 'はい' : 'いいえ', e.inFrame ? 'warn' : 'ok'));
+    box.appendChild(envRow('声の聞き取りの機能', e.sr ? 'あります' : 'ありません', e.sr ? 'ok' : 'bad'));
+    box.appendChild(envRow('読み上げの機能', e.synth ? 'あります' : 'ありません', e.synth ? 'ok' : 'bad'));
+    box.appendChild(envRow('日本語の読み上げ音声', e.jaCount + '件', e.jaCount > 0 ? 'ok' : 'warn'));
+
+    var banner = $('banner');
+    if (e.inFrame) {
+      banner.textContent = 'このページは別の枠の中で表示されています。声の入力や動画の再生が、この環境の制限で動かないことがあります。その場合の結果は参考として扱い、本番の置き場所に置いた後で、もう一度確認します。';
+    } else {
+      banner.textContent = 'このページは単独で表示されています。結果は、そのまま本番の動きの参考になります。';
+    }
+    return e;
+  }
+  if ('speechSynthesis' in window) {
+    try { window.speechSynthesis.onvoiceschanged = function () { renderEnv(); buildSummary(); }; } catch (e) {}
+  }
+
+  /* ---------- 1. 声の聞き取り ---------- */
+  var rec = null, listening = false;
+  var errHints = {
+    'not-allowed': 'マイクの許可が出ていません。iPadの設定でSafariとマイクの許可を確認してください。このページが枠の中で表示されている場合は、枠の制限の可能性もあります。',
+    'service-not-allowed': '音声入力が使えない状態です。iPadの設定で、キーボードの音声入力とSiriの設定を確認してください。',
+    'no-speech': '声が聞こえませんでした。もう一度、マイクの近くで話してください。',
+    'audio-capture': 'マイクが見つかりません。',
+    'network': '通信が必要です。Wi-Fiの接続を確認してください。',
+    'aborted': '途中で止まりました。'
+  };
+  $('btn-listen').addEventListener('click', function () {
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var out = $('out-listen'), err = $('err-listen'), btn = $('btn-listen');
+    err.textContent = '';
+    if (!SR) { err.textContent = 'この環境では、声の聞き取りの機能が使えません。'; return; }
+    if (listening && rec) { try { rec.stop(); } catch (e) {} return; }
+    rec = new SR();
+    rec.lang = 'ja-JP';
+    rec.interimResults = true;
+    rec.continuous = false;
+    rec.maxAlternatives = 1;
+    var startedAt = Date.now();
+    rec.onstart = function () {
+      listening = true;
+      btn.textContent = '聞いています（もう一度押すと止まります）';
+      out.textContent = '…';
+    };
+    rec.onresult = function (ev) {
+      var t = '';
+      for (var i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript;
+      out.textContent = t;
+      if (ev.results[ev.results.length - 1].isFinal) {
+        var sec = ((Date.now() - startedAt) / 1000).toFixed(1);
+        err.textContent = '確定まで約' + sec + '秒';
+        results.t1 = results.t1 || {};
+        results.t1.note = '聞き取り結果：' + t;
+        saveResults(); buildSummary();
+      }
+    };
+    rec.onerror = function (ev) {
+      err.textContent = 'エラー：' + ev.error + '。' + (errHints[ev.error] || '');
+      results.t1 = results.t1 || {};
+      results.t1.note = 'エラー：' + ev.error;
+      saveResults(); buildSummary();
+    };
+    rec.onend = function () {
+      listening = false;
+      btn.textContent = '話す';
+    };
+    try { rec.start(); } catch (e) { err.textContent = '開始できませんでした：' + e.message; }
+  });
+
+  /* ---------- 2. 読み上げ ---------- */
+  $('speak-rate').addEventListener('input', function () { $('rate-val').textContent = this.value; });
+  $('btn-speak').addEventListener('click', function () {
+    var err = $('err-speak'); err.textContent = '';
+    if (!('speechSynthesis' in window)) { err.textContent = 'この環境では、読み上げの機能が使えません。'; return; }
+    var text = $('speak-text').value || '';
+    if (!text.trim()) { err.textContent = '読み上げる文章を入れてください。'; return; }
+    try {
+      window.speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ja-JP';
+      u.rate = parseFloat($('speak-rate').value) || 0.9;
+      var voices = window.speechSynthesis.getVoices().filter(function (v) { return /^ja/i.test(v.lang); });
+      if (voices.length) u.voice = voices[0];
+      u.onerror = function (ev) { err.textContent = '読み上げでエラー：' + (ev.error || ''); };
+      window.speechSynthesis.speak(u);
+    } catch (e) { err.textContent = '読み上げを開始できませんでした：' + e.message; }
+  });
+  $('btn-stop').addEventListener('click', function () {
+    try { window.speechSynthesis.cancel(); } catch (e) {}
+  });
+
+  /* ---------- 3. YouTube ---------- */
+  function extractId(s) {
+    s = (s || '').trim();
+    if (/^[\w-]{11}$/.test(s)) return s;
+    try {
+      var u = new URL(s);
+      if (u.hostname === 'youtu.be') {
+        var p = u.pathname.slice(1, 12);
+        if (/^[\w-]{11}$/.test(p)) return p;
+      }
+      var v = u.searchParams.get('v');
+      if (v && /^[\w-]{11}$/.test(v)) return v;
+      var m = u.pathname.match(/\/(embed|shorts|live)\/([\w-]{11})/);
+      if (m) return m[2];
+    } catch (e) {}
+    return null;
+  }
+  $('btn-yt').addEventListener('click', function () {
+    var err = $('err-yt'), frame = $('yt-frame');
+    err.textContent = '';
+    var id = extractId($('yt-url').value);
+    if (!id) { err.textContent = 'URLから動画を読み取れませんでした。YouTubeの動画のURLを貼ってください。'; return; }
+    while (frame.firstChild) frame.removeChild(frame.firstChild);
+    var f = document.createElement('iframe');
+    f.src = 'https://www.youtube.com/embed/' + id + '?playsinline=1&rel=0';
+    f.title = 'YouTube動画の再生テスト';
+    f.setAttribute('allow', 'autoplay; encrypted-media; fullscreen; picture-in-picture');
+    f.setAttribute('allowfullscreen', '');
+    f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    frame.appendChild(f);
+    err.textContent = '「再生できません」と出る場合は、その動画が外部ページでの再生を許可していません。枠が空白のままの場合は、このページの環境の制限かもしれません。';
+  });
+
+  /* ---------- 4. 他のアプリ ---------- */
+  var appDefs = [
+    { id: 't4a', name: 'TVer', url: 'https://tver.jp/' },
+    { id: 't4b', name: 'Amazonプライム・ビデオ', url: 'https://www.amazon.co.jp/gp/video/storefront' },
+    { id: 't4c', name: 'みてね', url: 'https://mitene.us/' }
+  ];
+  var appOptions = '○ アプリが開いた,△ Safariの新しいタブで開いた,× 開かなかった';
+  function buildApps() {
+    var box = $('apps');
+    appDefs.forEach(function (a) {
+      var item = document.createElement('div'); item.className = 'appitem';
+      var h = document.createElement('div'); h.style.fontWeight = '700'; h.textContent = a.name;
+      var lab = document.createElement('label'); lab.setAttribute('for', 'url-' + a.id); lab.textContent = '開くURL（開けない時は書き換えてください）';
+      var inp = document.createElement('input'); inp.type = 'url'; inp.id = 'url-' + a.id; inp.value = a.url; inp.setAttribute('inputmode', 'url');
+      var row = document.createElement('div'); row.className = 'row';
+      var link = document.createElement('a'); link.className = 'btn primary'; link.textContent = a.name + 'を開く'; link.href = a.url;
+      inp.addEventListener('input', function () {
+        var v = inp.value.trim();
+        link.href = /^https?:\/\//i.test(v) ? v : '#';
+      });
+      row.appendChild(link);
+      var marks = document.createElement('div'); marks.className = 'marks';
+      marks.setAttribute('data-test', a.id); marks.setAttribute('data-label', a.name + 'を開く'); marks.setAttribute('data-options', appOptions);
+      item.appendChild(h); item.appendChild(lab); item.appendChild(inp); item.appendChild(row); item.appendChild(marks);
+      box.appendChild(item);
+    });
+  }
+
+  /* ---------- 5. FaceTime ---------- */
+  var ftLink = $('ft-link');
+  function updateFt() {
+    var v = $('ft-addr').value.trim().replace(/[^\w+@.\-]/g, '');
+    if (v) { ftLink.href = 'facetime://' + v; ftLink.removeAttribute('aria-disabled'); }
+    else { ftLink.href = '#'; ftLink.setAttribute('aria-disabled', 'true'); }
+  }
+  $('ft-addr').addEventListener('input', updateFt);
+  ftLink.addEventListener('click', function (ev) {
+    if (ftLink.getAttribute('aria-disabled') === 'true') ev.preventDefault();
+  });
+
+  /* ---------- 結果の印 ---------- */
+  var labels = {};
+  function buildMarks() {
+    var groups = document.querySelectorAll('.marks');
+    for (var g = 0; g < groups.length; g++) {
+      (function (grp) {
+        var tid = grp.getAttribute('data-test');
+        labels[tid] = grp.getAttribute('data-label');
+        var opts = (grp.getAttribute('data-options') || '').split(',');
+        opts.forEach(function (o) {
+          var b = document.createElement('button');
+          b.type = 'button'; b.className = 'mark'; b.textContent = o;
+          b.setAttribute('aria-pressed', (results[tid] && results[tid].mark === o) ? 'true' : 'false');
+          b.addEventListener('click', function () {
+            results[tid] = results[tid] || {};
+            results[tid].mark = o;
+            var sib = grp.querySelectorAll('.mark');
+            for (var i = 0; i < sib.length; i++) sib[i].setAttribute('aria-pressed', sib[i] === b ? 'true' : 'false');
+            saveResults(); buildSummary();
+          });
+          grp.appendChild(b);
+        });
+      })(groups[g]);
+    }
+  }
+
+  /* ---------- まとめ ---------- */
+  function buildSummary() {
+    var e = getEnv();
+    var lines = [];
+    lines.push('【iPad動作確認の結果】');
+    lines.push('ホーム画面から開いた：' + (e.standalone ? 'はい' : 'いいえ') + ' / 枠の中で表示：' + (e.inFrame ? 'はい' : 'いいえ'));
+    lines.push('声の聞き取りの機能：' + (e.sr ? 'あり' : 'なし') + ' / 読み上げの機能：' + (e.synth ? 'あり' : 'なし') + ' / 日本語音声：' + e.jaCount + '件');
+    var order = ['t1', 't2', 't3', 't4a', 't4b', 't4c', 't5'];
+    order.forEach(function (k) {
+      var r = results[k] || {};
+      var line = (labels[k] || k) + '：' + (r.mark || '未確認');
+      if (r.note) line += '（' + r.note + '）';
+      lines.push(line);
+    });
+    var memo = ($('memo').value || '').trim();
+    if (memo) lines.push('気づいたこと：' + memo);
+    $('summary').value = lines.join('\n');
+  }
+  $('memo').addEventListener('input', buildSummary);
+
+  $('btn-copy').addEventListener('click', function () {
+    var ta = $('summary'), msg = $('copy-msg');
+    buildSummary();
+    function fallback() {
+      try {
+        ta.removeAttribute('readonly'); ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
+        var ok = document.execCommand && document.execCommand('copy');
+        ta.setAttribute('readonly', '');
+        msg.textContent = ok ? 'コピーしました。Claudeのチャットに貼ってください。' : '文章を選択しました。長押しして「コピー」を選んでください。';
+      } catch (e) {
+        msg.textContent = '文章を長押しして、「コピー」を選んでください。';
+      }
+    }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(ta.value).then(function () {
+          msg.textContent = 'コピーしました。Claudeのチャットに貼ってください。';
+        }, fallback);
+      } else { fallback(); }
+    } catch (e) { fallback(); }
+  });
+
+  /* ---------- 起動 ---------- */
+  loadResults();
+  buildApps();
+  buildMarks();
+  updateFt();
+  renderEnv();
+  buildSummary();
+  if (memoryOnly) {
+    var n = document.createElement('div');
+    n.className = 'small';
+    n.textContent = 'このページでは結果を保存できないため、アプリを開いて戻ると、印が消えることがあります。';
+    $('banner').appendChild(document.createElement('br'));
+    $('banner').appendChild(n);
+  }
+})();
+</script>
+</body>
+</html>
