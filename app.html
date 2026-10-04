@@ -37,10 +37,10 @@ p{margin:0}
 .muted{color:var(--muted)}
 
 /* ホーム：左に時計・予定・メモ、右に大きなボタン（縦向きの時は上下） */
-.home{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:16px}
-@media (orientation:portrait){ .home{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) 44%} }
+.home{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:16px}
+@media (orientation:portrait){ .home{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) 30%} }
 /* 予定とメモの欄の高さは中身で変えない（変わると、入りきる数の計算がずれる） */
-.info{display:grid;grid-template-rows:auto auto minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,1fr);gap:10px;min-height:0}
+.info{display:grid;grid-template-rows:auto auto minmax(0,1fr) minmax(0,1.3fr) minmax(0,0.9fr);gap:10px;min-height:0}
 .info > :nth-child(1){grid-row:1} .info > .status{grid-row:2} .info > .card.fill{grid-row:3} .info > .card.fill2{grid-row:4} .info > .card.memo{grid-row:5}
 .dt{display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
 .date{font-size:26px;font-weight:700}
@@ -65,6 +65,11 @@ p{margin:0}
 .big{display:flex;align-items:center;justify-content:center;text-align:center;min-height:76px;padding:8px 14px;border:3px solid var(--blue);border-radius:18px;
   background:var(--card);color:var(--blue);font:inherit;font-size:28px;font-weight:700;line-height:1.3;text-decoration:none;cursor:pointer;width:100%}
 .btns .big{min-height:0;height:100%}
+.btns .wide{grid-column:1/-1}
+/* 欄の見出しの横のボタン */
+.chead{display:flex;align-items:center;gap:10px;margin-bottom:4px;flex:0 0 auto}
+.chead h2{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.big.mini{min-height:58px;width:auto;font-size:22px;padding:4px 16px;flex:0 0 auto}
 .big.song{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
 .big.help{background:var(--bad);border-color:var(--bad);color:var(--bad-text)}
 .small{min-height:72px;font-size:26px;width:auto;padding:8px 22px}
@@ -147,30 +152,32 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
       <div class="dt"><span class="date" id="date"></span><span class="clock" id="clock"></span></div>
     </div>
     <div class="status" id="status" role="status"></div>
+    <!-- 予定とメモのボタンは、それぞれの欄の見出しの横に置く（どの欄の操作か分かるように） -->
     <div class="card fill">
-      <h2>きょうの予定</h2>
+      <div class="chead">
+        <h2>きょうの予定</h2>
+        <button type="button" class="big mini" id="btn-read">🔊 読む</button>
+        <button type="button" class="big mini" id="btn-add-sched">🎤 予定を話す</button>
+      </div>
       <div class="list" id="sched"></div>
     </div>
     <div class="card fill2">
-      <h2 id="tmr-title">あしたの予定</h2>
+      <h2>これから1週間の予定</h2>
       <div class="list" id="sched2"></div>
     </div>
     <div class="card memo">
-      <h2>メモ</h2>
+      <div class="chead">
+        <h2>メモ</h2>
+        <button type="button" class="big mini" id="btn-memo">🎤 メモを話す</button>
+      </div>
       <div class="list" id="memos"></div>
     </div>
   </div>
+  <!-- Amazonプライム・みてねは外した（ホーム画面のアプリから直接開く方が迷わない） -->
   <div class="btns">
-    <button type="button" class="big song" id="btn-songs">歌を聴く</button>
+    <button type="button" class="big song wide" id="btn-songs">歌を聴く</button>
     <button type="button" class="big song" id="btn-call">テレビ電話</button>
     <a class="big" href="https://tver.jp/" id="btn-tv">TVer</a>
-    <!-- アプリを直接開く。Prime Video は aiv://、みてねは公表されたアドレスが無いので、iPadの「ショートカット」アプリに
-         「みてね」という名前で「Appを開く：みてね」を作っておき、それを呼ぶ -->
-    <a class="big ext" href="aiv://" data-name="Amazonプライム">Amazon<br>プライム</a>
-    <a class="big ext" href="shortcuts://run-shortcut?name=%E3%81%BF%E3%81%A6%E3%81%AD" data-name="みてね">みてね</a>
-    <button type="button" class="big" id="btn-add-sched">予定を<br>話す</button>
-    <button type="button" class="big" id="btn-read">予定を<br>読んでもらう</button>
-    <button type="button" class="big" id="btn-memo">メモを<br>話す</button>
     <button type="button" class="big" id="btn-reload">画面を<br>新しくする</button>
     <button type="button" class="big help" id="btn-help">困った</button>
   </div>
@@ -276,7 +283,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04p';
+  var VERSION = '2026-10-04q';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -376,55 +383,49 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     var h = +m[1], ampm = h === 12 ? 'お昼の' : h > 12 ? '午後' : '午前';
     return ampm + (h > 12 ? h - 12 : h) + '時' + (m[2] === '00' ? '' : (+m[2]) + '分');
   }
-  var todayItems = [], tomorrowItems = [];
+  // days[0] がきょう、days[1]〜[7] がこれから1週間（あした〜7日後）。毎週の予定も、その曜日の日に入れる
+  var days = [];
   function renderSchedule() {
     var rows = data['予定'] || [], now = new Date();
     var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    var tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-    var t = [], tm = [], soon = [];
+    days = [];
+    for (var d = 0; d <= 7; d++) days.push({ dt: new Date(today.getFullYear(), today.getMonth(), today.getDate() + d), items: [] });
     rows.forEach(function (r) {
       if (!(r['内容'] || '').trim()) return;
       var wk = weeklyDays(r['日付']);
-      if (wk) {  // 毎週の予定は「きょう」と「あした」にだけ出す（「これから」に毎日並ばないように）
-        if (wk.indexOf(today.getDay()) >= 0) t.push({ dt: today, r: r });
-        if (wk.indexOf(tomorrow.getDay()) >= 0) tm.push({ dt: tomorrow, r: r });
+      if (wk) {
+        days.forEach(function (day) { if (wk.indexOf(day.dt.getDay()) >= 0) day.items.push(r); });
         return;
       }
       var dt = parseDate(r['日付']);
       if (!dt) return;
       var diff = Math.round((dt - today) / 864e5);
-      if (diff === 0) t.push({ dt: dt, r: r });
-      else if (diff === 1) tm.push({ dt: dt, r: r });
-      else if (diff > 1 && diff <= 7) soon.push({ dt: dt, r: r });
+      if (diff >= 0 && diff <= 7) days[diff].items.push(r);
     });
     // 時刻は「9:00」と「15:00」を文字で比べると順番が狂うので、分に直して比べる（時刻なしは先頭）
     var mins = function (s) { var m = String(s || '').match(/(\d{1,2})\D+(\d{2})/); return m ? +m[1] * 60 + +m[2] : -1; };
-    var byTime = function (a, b) { return a.dt - b.dt || mins(a.r['時刻']) - mins(b.r['時刻']); };
-    t.sort(byTime); tm.sort(byTime); soon.sort(byTime);
-    todayItems = t; tomorrowItems = tm;
+    days.forEach(function (day) { day.items.sort(function (a, b) { return mins(a['時刻']) - mins(b['時刻']); }); });
 
-    function item(x, withDate) {
-      var when = withDate
-        ? (x.dt.getMonth() + 1) + '/' + x.dt.getDate() + '（' + WEEK[x.dt.getDay()] + '）' + (x.r['時刻'] ? ' ' + x.r['時刻'] : '')
-        : (x.r['時刻'] || '');
-      var what = el('div', 'what', x.r['内容']);
-      if ((x.r['備考'] || '').trim()) what.appendChild(el('span', 'note', x.r['備考']));
-      return tapItem(when, what, function () { scheduleMenu(x.r); });
+    function item(r) {
+      var what = el('div', 'what', r['内容']);
+      if ((r['備考'] || '').trim()) what.appendChild(el('span', 'note', r['備考']));
+      return tapItem(r['時刻'] || '', what, function () { scheduleMenu(r); });
     }
-    // 「きょう」と「あした」は別の欄（予定が多くても、あしたが押し出されないように）。
-    // あしたの欄の後ろに、7日先までの予定を続ける。入りきらない分は後ろから「ほか○件」
+    // きょうの欄
     var box = $('sched'); clear(box);
-    if (!t.length) box.appendChild(el('p', 'muted', 'きょうの予定は、ありません。'));
-    t.forEach(function (x) { box.appendChild(item(x, false)); });
+    if (!days[0].items.length) box.appendChild(el('p', 'muted', 'きょうの予定は、ありません。'));
+    days[0].items.forEach(function (r) { box.appendChild(item(r)); });
     fitList(box);
-    $('tmr-title').textContent = 'あしたの予定（' + (tomorrow.getMonth() + 1) + '月' + tomorrow.getDate() + '日・' + WEEK[tomorrow.getDay()] + '）';
-    var box2 = $('sched2'); clear(box2);
-    if (!tm.length) box2.appendChild(el('p', 'muted none', 'あしたの予定は、ありません。'));
-    tm.forEach(function (x) { box2.appendChild(item(x, false)); });
-    if (soon.length) {
-      box2.appendChild(el('div', 'sub', 'これからの予定'));
-      soon.forEach(function (x) { box2.appendChild(item(x, true)); });
-    }
+    // これから1週間の欄：日ごとに見出し（あした 10/5（月））と予定。予定のない日は出さない。入りきらない分は後ろから「ほか○件」
+    var box2 = $('sched2'), any = false; clear(box2);
+    days.slice(1).forEach(function (day, k) {
+      if (!day.items.length) return;
+      any = true;
+      var label = (k === 0 ? 'あした　' : '') + (day.dt.getMonth() + 1) + '/' + day.dt.getDate() + '（' + WEEK[day.dt.getDay()] + '）';
+      box2.appendChild(el('div', 'sub', label));
+      day.items.forEach(function (r) { box2.appendChild(item(r)); });
+    });
+    if (!any) box2.appendChild(el('p', 'muted', 'これから1週間の予定は、ありません。'));
     fitList(box2);
   }
 
@@ -443,20 +444,17 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     if (box.scrollHeight <= box.clientHeight + 1) return;
     var hidden = 0, more = el('div', 'more');
     box.appendChild(more);
+    // 後ろから1つずつ外す。日付の見出し（.sub）も一緒に外す（見出しだけ残ると、場所を取って予定が出なくなるため）
     while (box.scrollHeight > box.clientHeight + 1) {
-      var items = box.querySelectorAll('.item');
-      if (!items.length) break;
-      box.removeChild(items[items.length - 1]);
-      hidden++;
+      var last = more.previousElementSibling;
+      if (!last || !(last.classList.contains('item') || last.classList.contains('sub'))) break;
+      if (last.classList.contains('item')) hidden++;
+      box.removeChild(last);
       more.textContent = 'ほか ' + hidden + '件';
     }
-    // 見出しだけ残った「これからの予定」は消す
-    var subs = box.querySelectorAll('.sub');
-    // （「あしたの予定は、ありません。」が続く見出しは残す）
-    Array.prototype.forEach.call(subs, function (s) {
-      var n = s.nextElementSibling;
-      if (!n || !(n.classList.contains('item') || n.classList.contains('none'))) box.removeChild(s);
-    });
+    // 予定が1つも続かない見出しが最後に残っていたら外す
+    var tail = more.previousElementSibling;
+    if (tail && tail.classList.contains('sub')) box.removeChild(tail);
   }
 
   /* ---------- 読み上げ ---------- */
@@ -477,15 +475,19 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
       if (done) setTimeout(finish, 1500 + text.length * 250);
     } catch (e) { finish(); }
   }
-  // きょうに続けて、あしたの予定も読む
+  // きょうの予定に続けて、これから1週間の予定（予定のある日だけ）を読む
   $('btn-read').addEventListener('click', function () {
-    function say(label, items) {
-      if (!items.length) return label + 'の予定は、ありません。';
-      return label + 'の予定は、' + items.map(function (x) {
-        return (x.r['時刻'] ? spokenTime(x.r['時刻']) + 'に、' : '') + x.r['内容'];
-      }).join('。 ') + '、です。';
+    function list(items) {
+      return items.map(function (r) { return (r['時刻'] ? spokenTime(r['時刻']) + 'に、' : '') + r['内容']; }).join('。 ');
     }
-    speak(say('きょう', todayItems) + ' ' + say('あした', tomorrowItems));
+    var text = days[0] && days[0].items.length ? 'きょうの予定は、' + list(days[0].items) + '、です。' : 'きょうの予定は、ありません。';
+    var week = days.slice(1).filter(function (day) { return day.items.length; });
+    if (!week.length) text += ' これから1週間の予定は、ありません。';
+    week.forEach(function (day, k) {
+      var who = (day.dt - days[0].dt) / 864e5 === 1 ? 'あした' : (day.dt.getMonth() + 1) + '月' + day.dt.getDate() + '日、' + WEEK[day.dt.getDay()] + '曜日';
+      text += ' ' + who + 'は、' + list(day.items) + '。';
+    });
+    speak(text);
   });
 
   /* ---------- 歌手とYouTube ---------- */
