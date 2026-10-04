@@ -260,7 +260,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04l';
+  var VERSION = '2026-10-04m';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -638,14 +638,41 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
       box.appendChild(b);
     });
   }
+  function hush() { try { window.speechSynthesis.cancel(); } catch (e) {} }
+  // 名前をさわったら、ふつうのテレビ電話か、画面を見てもらう（画面共有）かを選ぶ
   function callTo(o) {
+    var name = o['名前'].trim();
+    dialog(name + 'に、どうしますか？', [
+      { label: 'テレビ電話をかける', cls: 'song', fn: function () { plainCall(o); } },
+      { label: '画面を見てもらう', fn: function () { shareCall(o); } },
+      { label: 'やめる', fn: closeDialog }
+    ]);
+  }
+  function plainCall(o) {
     var name = o['名前'].trim();
     var text = name + 'に、テレビ電話をかけます。\n「発信」と出たら、「発信」をさわってください。\nおわったら、赤いボタンで切ります。';
     speak(text.replace(/\n/g, ''));
     dialog(text, [
-      { label: 'かける', cls: 'song', href: 'facetime://' + facetimeAddr(o['FaceTime']),
-        fn: function () { try { window.speechSynthesis.cancel(); } catch (e) {} setTimeout(closeDialog, 500); } },
-      { label: 'やめる', fn: function () { try { window.speechSynthesis.cancel(); } catch (e) {} closeDialog(); } }
+      { label: 'かける', cls: 'song', href: 'facetime://' + facetimeAddr(o['FaceTime']), fn: function () { hush(); setTimeout(closeDialog, 500); } },
+      { label: 'やめる', fn: function () { hush(); closeDialog(); } }
+    ]);
+  }
+  // 画面共有：母は共有ボタンを探さなくてよいように、相手（家族）の側から「画面共有を頼む」流れにする。
+  // 母が押すのは、FaceTimeに出る「共有」と、操作を頼まれた時の「許可」だけ。かける前に家族にも知らせる
+  function shareCall(o) {
+    var name = o['名前'].trim();
+    var text = name + 'に、画面を見てもらいます。\n' +
+      'つながったら、「画面を見て」と言ってください。\n' +
+      '「共有」と出たら、「共有」をさわります。\n' +
+      '「許可」と出たら、「許可」をさわります。';
+    speak(text.replace(/\n/g, ''));
+    dialog(text, [
+      { label: 'かける', cls: 'song', href: 'facetime://' + facetimeAddr(o['FaceTime']), fn: function () {
+        hush();
+        if (configured()) api({ kind: 'help', text: 'iPadの画面を見てほしいそうです。' + name + 'にFaceTimeをかけます（画面共有を頼んでください）' }).catch(function () {});
+        setTimeout(closeDialog, 500);
+      } },
+      { label: 'やめる', fn: function () { hush(); closeDialog(); } }
     ]);
   }
   $('btn-call').addEventListener('click', function () { callPage = 0; renderContacts(); show('call'); });
