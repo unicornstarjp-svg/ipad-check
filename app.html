@@ -149,8 +149,8 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   <div class="btns">
     <button type="button" class="big song" id="btn-songs">歌を聴く</button>
     <a class="big" href="https://tver.jp/" id="btn-tv">TVer</a>
-    <a class="big ext" href="https://www.primevideo.com/" data-name="Amazonプライム">Amazon<br>プライム</a>
-    <a class="big ext" href="https://mitene.us/" data-name="みてね">みてね</a>
+    <a class="big ext" href="https://www.primevideo.com/" data-name="Amazonプライム" data-newwin>Amazon<br>プライム</a>
+    <a class="big ext" href="https://mitene.us/" data-name="みてね" data-newwin>みてね</a>
     <button type="button" class="big" id="btn-add-sched">予定を<br>話す</button>
     <button type="button" class="big" id="btn-read">予定を<br>読んでもらう</button>
     <button type="button" class="big" id="btn-memo">メモを<br>話す</button>
@@ -243,7 +243,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04i';
+  var VERSION = '2026-10-04j';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -571,11 +571,13 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   }
   /* ---------- 別のアプリが開くボタン（TVer・Amazonプライム・みてね） ---------- */
   // 開いたあと、おたすけへの戻り方が分からなくならないように、開く前に画面と声で案内する
-  function openApp(url, name) {
-    var text = name + 'をひらきます。\nおわったら、ホーム画面にもどって、「おたすけ」をさわると、ここにもどります。';
+  // newWin：アプリに切り替わらないもの（Amazonプライム・みてね）は Safari で開く。
+  // ホーム画面のおたすけの中でそのまま開くと、おたすけ自体がそのページに置き換わって戻れなくなるため
+  function openApp(url, name, newWin) {
+    var text = name + 'を' + (newWin ? 'Safariで' : '') + 'ひらきます。\nおわったら、ホーム画面にもどって、「おたすけ」をさわると、ここにもどります。';
     speak(text.replace('\n', ''));
     dialog(text, [
-      { label: 'ひらく', cls: 'song', href: url, fn: function () { try { window.speechSynthesis.cancel(); } catch (e) {} setTimeout(closeDialog, 500); } },
+      { label: 'ひらく', cls: 'song', href: url, newWin: newWin, fn: function () { try { window.speechSynthesis.cancel(); } catch (e) {} setTimeout(closeDialog, 500); } },
       { label: 'やめる', fn: function () { try { window.speechSynthesis.cancel(); } catch (e) {} closeDialog(); } }
     ]);
   }
@@ -584,7 +586,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     var a = e.target.closest ? e.target.closest('a.ext') : null;
     if (!a) return;
     e.preventDefault();
-    openApp(a.href, a.getAttribute('data-name') || 'アプリ');
+    openApp(a.href, a.getAttribute('data-name') || 'アプリ', a.hasAttribute('data-newwin'));
   });
 
   /* ---------- TVerの番組ボタン ---------- */
@@ -672,7 +674,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     buttons.forEach(function (b) {
       // href があるボタンは本物のリンクにする（TVerなどは、リンクをさわった時だけアプリに切り替わるため）
       var n = el(b.href ? 'a' : 'button', 'big' + (b.cls ? ' ' + b.cls : ''), b.label);
-      if (b.href) n.href = b.href; else n.type = 'button';
+      if (b.href) { n.href = b.href; if (b.newWin) { n.target = '_blank'; n.rel = 'noopener'; } } else n.type = 'button';
       if (b.fn) n.addEventListener('click', b.fn);
       box.appendChild(n);
     });
