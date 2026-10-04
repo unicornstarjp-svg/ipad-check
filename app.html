@@ -310,7 +310,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04u';
+  var VERSION = '2026-10-04v';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -1070,7 +1070,8 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
         if (!heard.trim()) { failed('聞きとれませんでした。'); return; }
         understand(heard);
       };
-      dialog(ask + '　…聞いています', [{ label: 'やめる', fn: cancel }]);
+      // 例（hint）は消さずに出したまま、下に「聞いています」を足す
+      dialog(ask + hint + '\n\n🎤 …聞いています', [{ label: 'やめる', fn: cancel }]);
       try { rec.start(); } catch (e) { rec = null; if (auto) askTap(); else failed('声を使えませんでした。'); }
     }
     function askTap() {
