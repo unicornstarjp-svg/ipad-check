@@ -78,6 +78,10 @@ p{margin:0}
 @media (orientation:portrait){ .pagegrid{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr))} }
 .pagegrid .big{height:100%;min-height:0;font-size:32px}
 .pagegrid .muted{grid-column:1/-1;align-self:center;text-align:center}
+/* 「ふつうの歌／カラオケ」の切り替え。選んでいる方を塗りつぶす */
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:14px;flex:0 0 auto}
+.modes .big{width:100%}
+.modes .big.on{background:var(--blue);color:var(--card)}
 .pager{justify-content:center}
 .pager span{font-size:22px;color:var(--muted);min-width:5em;text-align:center}
 
@@ -144,7 +148,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   </div>
   <div class="btns">
     <button type="button" class="big song" id="btn-songs">歌を聴く</button>
-    <a class="big" href="https://tver.jp/">TVer</a>
+    <a class="big" href="https://tver.jp/" id="btn-tv">TVer</a>
     <a class="big" href="https://www.primevideo.com/">Amazon<br>プライム</a>
     <a class="big" href="https://mitene.us/">みてね</a>
     <button type="button" class="big" id="btn-add-sched">予定を<br>話す</button>
@@ -160,11 +164,29 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     <h2>だれの歌にしますか</h2>
     <button type="button" class="big small" id="btn-add-singer">歌手を足す（話す）</button>
   </div>
+  <div class="modes">
+    <button type="button" class="big small on" id="mode-song" aria-pressed="true">♪ ふつうの歌</button>
+    <button type="button" class="big small" id="mode-kara" aria-pressed="false">🎤 カラオケ</button>
+  </div>
   <div class="pagegrid" id="singers"></div>
   <div class="bar pager" id="pager" hidden>
     <button type="button" class="big small" id="pg-prev">◀ まえ</button>
     <span id="pg-info"></span>
     <button type="button" class="big small" id="pg-next">つぎ ▶</button>
+  </div>
+</section>
+
+<section id="v-tv" class="view" hidden>
+  <div class="bar">
+    <button type="button" class="big small" data-back="home">もどる</button>
+    <h2>どの番組を見ますか</h2>
+    <a class="big small" href="https://tver.jp/">TVerを開く</a>
+  </div>
+  <div class="pagegrid" id="programs"></div>
+  <div class="bar pager" id="tv-pager" hidden>
+    <button type="button" class="big small" id="tv-prev">◀ まえ</button>
+    <span id="tv-info"></span>
+    <button type="button" class="big small" id="tv-next">つぎ ▶</button>
   </div>
 </section>
 
@@ -221,7 +243,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04g';
+  var VERSION = '2026-10-04h';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -239,7 +261,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
 
   /* ---------- 画面の切り替え ---------- */
-  var views = ['home', 'songs', 'play', 'set'];
+  var views = ['home', 'songs', 'tv', 'play', 'set'];
   function show(name) {
     views.forEach(function (v) { $('v-' + v).hidden = (v !== name); });
     if (name !== 'play') stopPlayer();
@@ -547,26 +569,71 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     $('btn-next').disabled = current.idx < 0 || n < 2;  // 最後の曲の「つぎ」は、最初の曲に戻る
     renderSongList();
   }
-  function openSinger(r) {
-    var name = r['名前'];
-    current = { name: name, items: [], idx: -1 };
-    $('play-title').textContent = name;
-    Object.keys(r).forEach(function (k) {
-      if (!/^動画/.test(k.trim())) return;
-      var id = videoId(r[k]);
-      if (id && !current.items.some(function (x) { return x.id === id; })) current.items.push({ id: id, title: '' });
+  /* ---------- TVerの番組ボタン ---------- */
+  // 家族が「番組」タブに書いた番組を大きなボタンにする。さわるとTVerアプリのその番組のページが開く。
+  // 番組が1つもなければ、今までどおりTVerボタンでそのままTVerを開く
+  var tvPage = 0;
+  function programs() {
+    return (data['番組'] || []).filter(function (o) {
+      return (o['番組名'] || '').trim() && /^https:\/\/[^\s]+$/.test((o['URL'] || '').trim());
     });
-    if (videoLists[name]) current.items = videoLists[name];
+  }
+  function renderPrograms() {
+    var box = $('programs'); clear(box);
+    var rows = programs(), pages = Math.max(1, Math.ceil(rows.length / PAGE));
+    if (tvPage >= pages) tvPage = pages - 1;
+    $('tv-pager').hidden = pages <= 1;
+    $('tv-info').textContent = (tvPage + 1) + ' / ' + pages;
+    $('tv-prev').disabled = tvPage === 0;
+    $('tv-next').disabled = tvPage === pages - 1;
+    rows.slice(tvPage * PAGE, tvPage * PAGE + PAGE).forEach(function (o) {
+      var a = el('a', 'big', o['番組名'].trim());
+      a.href = o['URL'].trim();
+      box.appendChild(a);
+    });
+  }
+  $('btn-tv').addEventListener('click', function (e) {
+    if (!programs().length) return;  // 番組がなければ、リンクのままTVerを開く
+    e.preventDefault();
+    tvPage = 0; renderPrograms(); show('tv');
+  });
+  $('tv-prev').addEventListener('click', function () { if (tvPage > 0) { tvPage--; renderPrograms(); } });
+  $('tv-next').addEventListener('click', function () { tvPage++; renderPrograms(); });
+
+  // ふつうの歌か、カラオケか（歌手の一覧の上で切り替える）。カラオケは「動画○」の列を使わず、検索だけ
+  var songMode = 'song';
+  function setMode(m) {
+    songMode = m;
+    $('mode-song').classList.toggle('on', m === 'song');
+    $('mode-kara').classList.toggle('on', m === 'karaoke');
+    $('mode-song').setAttribute('aria-pressed', String(m === 'song'));
+    $('mode-kara').setAttribute('aria-pressed', String(m === 'karaoke'));
+  }
+  $('mode-song').addEventListener('click', function () { setMode('song'); });
+  $('mode-kara').addEventListener('click', function () { setMode('karaoke'); });
+
+  function openSinger(r) {
+    var name = r['名前'], mode = songMode, key = mode + ':' + name;
+    current = { name: name, key: key, items: [], idx: -1 };
+    $('play-title').textContent = name + (mode === 'karaoke' ? '（カラオケ）' : '');
+    if (mode === 'song') {
+      Object.keys(r).forEach(function (k) {
+        if (!/^動画/.test(k.trim())) return;
+        var id = videoId(r[k]);
+        if (id && !current.items.some(function (x) { return x.id === id; })) current.items.push({ id: id, title: '' });
+      });
+    }
+    if (videoLists[key]) current.items = videoLists[key];
     show('play');
     if (current.items.length) cue(0, false);
     else { renderSongBar(); $('player').appendChild(el('p', 'muted', 'さがしています…')); }
-    if (videoLists[name]) return;
-    api({ kind: 'videos', name: name }).then(function (res) {
-      if (current.name !== name || !res || !res.ok || !res.items || !res.items.length) {
-        if (current.name === name && !current.items.length) { clear($('player')); $('player').appendChild(el('p', 'muted', '歌が見つかりませんでした。')); }
+    if (videoLists[key]) return;
+    api({ kind: 'videos', name: name, mode: mode }).then(function (res) {
+      if (current.key !== key || !res || !res.ok || !res.items || !res.items.length) {
+        if (current.key === key && !current.items.length) { clear($('player')); $('player').appendChild(el('p', 'muted', '歌が見つかりませんでした。')); }
         return;
       }
-      videoLists[name] = res.items;
+      videoLists[key] = res.items;
       var playingId = current.idx >= 0 ? current.items[current.idx].id : null;
       current.items = res.items;
       // 表の動画が先頭に来るので、ふつうは今出ている曲のまま。曲名と「○/○曲」だけ新しくする
