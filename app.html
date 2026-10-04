@@ -40,8 +40,8 @@ p{margin:0}
 .home{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:16px}
 @media (orientation:portrait){ .home{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) 44%} }
 /* 予定とメモの欄の高さは中身で変えない（変わると、入りきる数の計算がずれる） */
-.info{display:grid;grid-template-rows:auto auto minmax(0,1.5fr) minmax(0,1fr);gap:10px;min-height:0}
-.info > :nth-child(1){grid-row:1} .info > .status{grid-row:2} .info > .card.fill{grid-row:3} .info > .card.memo{grid-row:4}
+.info{display:grid;grid-template-rows:auto auto minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,1fr);gap:10px;min-height:0}
+.info > :nth-child(1){grid-row:1} .info > .status{grid-row:2} .info > .card.fill{grid-row:3} .info > .card.fill2{grid-row:4} .info > .card.memo{grid-row:5}
 .dt{display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
 .date{font-size:26px;font-weight:700}
 .clock{font-size:48px;font-weight:700;line-height:1.1}
@@ -150,6 +150,10 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     <div class="card fill">
       <h2>きょうの予定</h2>
       <div class="list" id="sched"></div>
+    </div>
+    <div class="card fill2">
+      <h2 id="tmr-title">あしたの予定</h2>
+      <div class="list" id="sched2"></div>
     </div>
     <div class="card memo">
       <h2>メモ</h2>
@@ -272,7 +276,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04o';
+  var VERSION = '2026-10-04p';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -372,24 +376,32 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     var h = +m[1], ampm = h === 12 ? 'お昼の' : h > 12 ? '午後' : '午前';
     return ampm + (h > 12 ? h - 12 : h) + '時' + (m[2] === '00' ? '' : (+m[2]) + '分');
   }
-  var todayItems = [];
+  var todayItems = [], tomorrowItems = [];
   function renderSchedule() {
     var rows = data['予定'] || [], now = new Date();
     var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    var t = [], soon = [];
+    var tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    var t = [], tm = [], soon = [];
     rows.forEach(function (r) {
       if (!(r['内容'] || '').trim()) return;
       var wk = weeklyDays(r['日付']);
-      if (wk) { if (wk.indexOf(today.getDay()) >= 0) t.push({ dt: today, r: r }); return; }  // 毎週の予定は「きょう」にだけ出す
+      if (wk) {  // 毎週の予定は「きょう」と「あした」にだけ出す（「これから」に毎日並ばないように）
+        if (wk.indexOf(today.getDay()) >= 0) t.push({ dt: today, r: r });
+        if (wk.indexOf(tomorrow.getDay()) >= 0) tm.push({ dt: tomorrow, r: r });
+        return;
+      }
       var dt = parseDate(r['日付']);
       if (!dt) return;
       var diff = Math.round((dt - today) / 864e5);
       if (diff === 0) t.push({ dt: dt, r: r });
-      else if (diff > 0 && diff <= 7) soon.push({ dt: dt, r: r });
+      else if (diff === 1) tm.push({ dt: dt, r: r });
+      else if (diff > 1 && diff <= 7) soon.push({ dt: dt, r: r });
     });
-    var byTime = function (a, b) { return a.dt - b.dt || String(a.r['時刻']).localeCompare(String(b.r['時刻'])); };
-    t.sort(byTime); soon.sort(byTime);
-    todayItems = t;
+    // 時刻は「9:00」と「15:00」を文字で比べると順番が狂うので、分に直して比べる（時刻なしは先頭）
+    var mins = function (s) { var m = String(s || '').match(/(\d{1,2})\D+(\d{2})/); return m ? +m[1] * 60 + +m[2] : -1; };
+    var byTime = function (a, b) { return a.dt - b.dt || mins(a.r['時刻']) - mins(b.r['時刻']); };
+    t.sort(byTime); tm.sort(byTime); soon.sort(byTime);
+    todayItems = t; tomorrowItems = tm;
 
     function item(x, withDate) {
       var when = withDate
@@ -399,15 +411,21 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
       if ((x.r['備考'] || '').trim()) what.appendChild(el('span', 'note', x.r['備考']));
       return tapItem(when, what, function () { scheduleMenu(x.r); });
     }
-    // きょうの予定を先に、そのあと7日先までの予定。入りきらない分は「ほか○件」
+    // 「きょう」と「あした」は別の欄（予定が多くても、あしたが押し出されないように）。
+    // あしたの欄の後ろに、7日先までの予定を続ける。入りきらない分は後ろから「ほか○件」
     var box = $('sched'); clear(box);
     if (!t.length) box.appendChild(el('p', 'muted', 'きょうの予定は、ありません。'));
     t.forEach(function (x) { box.appendChild(item(x, false)); });
-    if (soon.length) {
-      box.appendChild(el('div', 'sub', 'これからの予定'));
-      soon.forEach(function (x) { box.appendChild(item(x, true)); });
-    }
     fitList(box);
+    $('tmr-title').textContent = 'あしたの予定（' + (tomorrow.getMonth() + 1) + '月' + tomorrow.getDate() + '日・' + WEEK[tomorrow.getDay()] + '）';
+    var box2 = $('sched2'); clear(box2);
+    if (!tm.length) box2.appendChild(el('p', 'muted none', 'あしたの予定は、ありません。'));
+    tm.forEach(function (x) { box2.appendChild(item(x, false)); });
+    if (soon.length) {
+      box2.appendChild(el('div', 'sub', 'これからの予定'));
+      soon.forEach(function (x) { box2.appendChild(item(x, true)); });
+    }
+    fitList(box2);
   }
 
   function tapItem(when, what, onTap) {
@@ -434,7 +452,11 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     }
     // 見出しだけ残った「これからの予定」は消す
     var subs = box.querySelectorAll('.sub');
-    Array.prototype.forEach.call(subs, function (s) { if (!s.nextElementSibling || !s.nextElementSibling.classList.contains('item')) box.removeChild(s); });
+    // （「あしたの予定は、ありません。」が続く見出しは残す）
+    Array.prototype.forEach.call(subs, function (s) {
+      var n = s.nextElementSibling;
+      if (!n || !(n.classList.contains('item') || n.classList.contains('none'))) box.removeChild(s);
+    });
   }
 
   /* ---------- 読み上げ ---------- */
@@ -455,11 +477,15 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
       if (done) setTimeout(finish, 1500 + text.length * 250);
     } catch (e) { finish(); }
   }
+  // きょうに続けて、あしたの予定も読む
   $('btn-read').addEventListener('click', function () {
-    if (!todayItems.length) { speak('きょうの予定は、ありません。'); return; }
-    speak('きょうの予定は、' + todayItems.map(function (x) {
-      return (x.r['時刻'] ? spokenTime(x.r['時刻']) + 'に、' : '') + x.r['内容'];
-    }).join('。 ') + '、です。');
+    function say(label, items) {
+      if (!items.length) return label + 'の予定は、ありません。';
+      return label + 'の予定は、' + items.map(function (x) {
+        return (x.r['時刻'] ? spokenTime(x.r['時刻']) + 'に、' : '') + x.r['内容'];
+      }).join('。 ') + '、です。';
+    }
+    speak(say('きょう', todayItems) + ' ' + say('あした', tomorrowItems));
   });
 
   /* ---------- 歌手とYouTube ---------- */
