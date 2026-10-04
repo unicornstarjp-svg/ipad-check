@@ -137,7 +137,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04a';
+  var VERSION = '2026-10-04b';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -220,6 +220,16 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     var dt = new Date(y, mo - 1, d);
     return dt.getMonth() === mo - 1 ? dt : null;
   }
+  // 「毎週火」「毎週月・木」「毎日」→ 曜日の番号の一覧（0=日）。毎週の予定でなければ null
+  function weeklyDays(s) {
+    s = (s || '').trim();
+    if (/^毎日/.test(s)) return [0, 1, 2, 3, 4, 5, 6];
+    var m = s.match(/^毎週\s*(.+)$/);
+    if (!m) return null;
+    var days = [];
+    WEEK.forEach(function (w, i) { if (m[1].indexOf(w) >= 0) days.push(i); });
+    return days.length ? days : null;
+  }
   function spokenTime(t) {
     var m = (t || '').match(/(\d{1,2})\D+(\d{2})/);
     if (!m) return t || '';
@@ -231,8 +241,11 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     var t = [], soon = [];
     rows.forEach(function (r) {
+      if (!(r['内容'] || '').trim()) return;
+      var wk = weeklyDays(r['日付']);
+      if (wk) { if (wk.indexOf(today.getDay()) >= 0) t.push({ dt: today, r: r }); return; }  // 毎週の予定は「きょう」にだけ出す
       var dt = parseDate(r['日付']);
-      if (!dt || !(r['内容'] || '').trim()) return;
+      if (!dt) return;
       var diff = Math.round((dt - today) / 864e5);
       if (diff === 0) t.push({ dt: dt, r: r });
       else if (diff > 0 && diff <= 7) soon.push({ dt: dt, r: r });
@@ -261,16 +274,22 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   }
 
   /* ---------- 読み上げ ---------- */
-  function speak(text) {
-    if (!('speechSynthesis' in window)) return;
+  // done は読み終わった時に1回だけ呼ぶ（onend が来ない時のために、文の長さから見積もった時間でも呼ぶ）
+  function speak(text, done) {
+    var called = false;
+    var finish = function () { if (!called && done) { called = true; done(); } };
+    if (!('speechSynthesis' in window)) { finish(); return; }
     try {
       window.speechSynthesis.cancel();
       var u = new SpeechSynthesisUtterance(text);
       u.lang = 'ja-JP'; u.rate = 0.9;
       var v = window.speechSynthesis.getVoices().filter(function (x) { return /^ja/i.test(x.lang); });
       if (v.length) u.voice = v[0];
+      u.onend = function () { setTimeout(finish, 250); };
+      u.onerror = finish;
       window.speechSynthesis.speak(u);
-    } catch (e) {}
+      if (done) setTimeout(finish, 1500 + text.length * 250);
+    } catch (e) { finish(); }
   }
   $('btn-read').addEventListener('click', function () {
     if (!todayItems.length) { speak('きょうの予定は、ありません。'); return; }
@@ -401,24 +420,55 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     var failed = function (msg) {
       dialog(msg, [{ label: 'もう一度', cls: 'song', fn: again }, { label: 'やめる', fn: closeDialog }]);
     };
-    dialog(mode === 'schedule' ? '予定を話してください。たとえば「来週の火曜、10時に病院」' : '歌手の名前を話してください', [{ label: 'やめる', fn: cancel }]);
-    var heard = '';
-    rec = new SR();
-    rec.lang = 'ja-JP'; rec.interimResults = false; rec.maxAlternatives = 1; rec.continuous = false;
-    rec.onresult = function (ev) { heard = ev.results[0][0].transcript; };
-    rec.onerror = function (ev) { if (ev.error !== 'aborted') { rec = null; failed('聞きとれませんでした。'); } };
-    rec.onend = function () {
-      if (!rec) return;
-      rec = null;
-      if (!heard.trim()) { failed('聞きとれませんでした。'); return; }
+    var ask = mode === 'schedule' ? '予定は何ですか？' : 'だれの歌を足しますか？';
+    var hint = mode === 'schedule' ? '（たとえば「来週の火曜、10時に病院」「毎週火曜はオレンジルーム」）' : '（歌手の名前を言ってください）';
+    // 聞いてから、読み上げが終わったところで聞き取りを始める（読み上げの声を拾わないように）
+    dialog(ask + hint, [{ label: 'やめる', fn: cancel }]);
+    speak(ask, function () { if (!$('dlg').hidden) listen(true); });
+
+    // auto：読み上げのあとに自動で始めた時。iPadに断られたら「話す」ボタンを出して、押してから始める
+    function listen(auto) {
+      var heard = '';
+      rec = new SR();
+      rec.lang = 'ja-JP'; rec.interimResults = false; rec.maxAlternatives = 1; rec.continuous = false;
+      rec.onresult = function (ev) { heard = ev.results[0][0].transcript; };
+      rec.onerror = function (ev) {
+        if (ev.error === 'aborted') return;
+        rec = null;
+        if (auto && /not-allowed/.test(ev.error)) { askTap(); return; }
+        failed('聞きとれませんでした。');
+      };
+      rec.onend = function () {
+        if (!rec) return;
+        rec = null;
+        if (!heard.trim()) { failed('聞きとれませんでした。'); return; }
+        understand(heard);
+      };
+      dialog(ask + '　…聞いています', [{ label: 'やめる', fn: cancel }]);
+      try { rec.start(); } catch (e) { rec = null; if (auto) askTap(); else failed('声を使えませんでした。'); }
+    }
+    function askTap() {
+      dialog(ask + hint, [{ label: '話す', cls: 'song', fn: function () { listen(false); } }, { label: 'やめる', fn: cancel }]);
+    }
+
+    function understand(heard) {
       dialog('「' + heard + '」…考えています', []);
       api({ kind: 'parse', mode: mode, text: heard }).then(function (r) {
         if (!r || !r.ok) { failed('うまく分かりませんでした。'); return; }
         var q, send;
         if (mode === 'schedule') {
-          var m = r.date.split('/'), dt = new Date(+m[0], +m[1] - 1, +m[2]);
-          q = (+m[1]) + '月' + (+m[2]) + '日（' + WEEK[dt.getDay()] + '）' + (r.time ? spokenTime(r.time) + 'に、' : '、') + r.content + '。これでいいですか？';
-          send = { kind: 'addSchedule', date: r.date, time: r.time, content: r.content, note: r.note };
+          var when;
+          if (r.weekly) {
+            when = '毎週 ' + r.weekly.split('').map(function (w) { return w + '曜日'; }).join('と') + '、';
+          } else {
+            var dates = r.dates || (r.date ? [r.date] : []);
+            when = dates.map(function (s) {
+              var m = s.split('/'), dt = new Date(+m[0], +m[1] - 1, +m[2]);
+              return (+m[1]) + '月' + (+m[2]) + '日（' + WEEK[dt.getDay()] + '）';
+            }).join('と') + '、';
+          }
+          q = when + (r.time ? spokenTime(r.time) + 'に、' : '') + r.content + '。これでいいですか？';
+          send = { kind: 'addSchedule', dates: r.dates || (r.date ? [r.date] : []), weekly: r.weekly || '', time: r.time, content: r.content, note: r.note };
         } else {
           q = r.name + '。これでいいですか？';
           send = { kind: 'addSinger', name: r.name };
@@ -438,8 +488,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
           { label: 'やめる', fn: closeDialog }
         ]);
       }, function () { failed('つながりませんでした。'); });
-    };
-    try { rec.start(); } catch (e) { rec = null; failed('声を使えませんでした。'); }
+    }
   }
   $('btn-add-sched').addEventListener('click', function () { addByVoice('schedule'); });
   $('btn-add-singer').addEventListener('click', function () { addByVoice('singer'); });
