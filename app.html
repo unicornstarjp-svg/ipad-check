@@ -81,17 +81,16 @@ p{margin:0}
 .pager{justify-content:center}
 .pager span{font-size:22px;color:var(--muted);min-width:5em;text-align:center}
 
-/* 歌：最初はサムネイル3つだけ。さわると、動画が画面いっぱいに出る */
-.stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
-.thumbs{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
-@media (orientation:portrait){ .thumbs{grid-template-columns:repeat(2,minmax(0,1fr))} }
-.thumb{padding:0;border:4px solid var(--blue);border-radius:18px;background:var(--card);overflow:hidden;cursor:pointer;font:inherit;color:var(--text);position:relative}
-.thumb img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:var(--chip)}
-.thumb .play{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);width:84px;height:84px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;
-  font-size:44px;line-height:84px;text-align:center;padding-left:8px}
-.thumb span.lab{display:block;padding:10px;font-weight:700;font-size:26px}
-.player{height:100%;max-width:100%;aspect-ratio:16/9;background:#000;border-radius:16px;overflow:hidden}
+/* 歌：YouTubeのプレーヤーを最初から大きく出す。真ん中の▶を1回さわれば再生（iPadはページのボタンからの自動再生を許さないため） */
+.songname{font-size:24px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 0 auto}
+.songname .pos{color:var(--muted);font-weight:400;margin-left:12px}
+.stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;container-type:size}
+.stage .muted{font-size:26px}
+/* 16:9 のまま、入る大きさいっぱいに（幅で決まるか高さで決まるかは画面の向きしだい） */
+.player{width:100%;aspect-ratio:16/9;background:#000;border-radius:16px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+@container (min-width:0px){ .player{width:min(100cqw, calc(100cqh * 16 / 9))} }
 .player iframe{width:100%;height:100%;border:0;display:block}
+.big:disabled{opacity:.35;cursor:default}
 
 /* 設定（家族用）だけは、はみ出したらスクロールしてよい */
 #v-set{overflow:auto}
@@ -156,11 +155,12 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   <div class="bar">
     <button type="button" class="big small" id="btn-play-back">もどる</button>
     <h2 id="play-title"></h2>
-    <button type="button" class="big small song" id="btn-next" hidden>つぎの歌 ▶</button>
+    <button type="button" class="big small" id="btn-prev">◀ まえの歌</button>
+    <button type="button" class="big small song" id="btn-next">つぎの歌 ▶</button>
   </div>
+  <div class="songname" id="song-name"></div>
   <div class="stage">
-    <div class="thumbs" id="thumbs"></div>
-    <div class="player" id="player" hidden></div>
+    <div class="player" id="player"></div>
   </div>
 </section>
 
@@ -193,7 +193,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04d';
+  var VERSION = '2026-10-04e';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -412,55 +412,65 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   $('pg-prev').addEventListener('click', function () { if (page > 0) { page--; renderSingers(); } });
   $('pg-next').addEventListener('click', function () { page++; renderSingers(); });
 
-  // 再生中は、サムネイルを隠して動画だけを大きく出す。「もどる」でサムネイルに、もう一度「もどる」で歌手の一覧に
-  var current = { ids: [], idx: -1, name: '' };
+  // 曲の一覧は、まず表の「動画1〜」の列。そのあと窓口に聞いて、YouTube検索の結果（最大20曲）に入れ替える
+  var current = { name: '', items: [], idx: -1 };
+  var videoLists = {};  // 歌手ごとに、このページを開いている間だけ覚えておく
   function stopPlayer() {
-    var p = $('player'); clear(p); p.hidden = true;
-    $('thumbs').hidden = false;
-    $('btn-next').hidden = true;
+    clear($('player'));  // iframe を外すと音も止まる
     current.idx = -1;
   }
-  function play(i) {
-    var id = current.ids[i];
+  function cue(i, autoplay) {
+    var it = current.items[i];
+    if (!it) return;
     current.idx = i;
     var p = $('player'); clear(p);
     var f = el('iframe');
-    f.src = 'https://www.youtube.com/embed/' + id + '?playsinline=1&rel=0&autoplay=1';
-    f.title = current.name + 'の動画';
+    f.src = 'https://www.youtube.com/embed/' + it.id + '?playsinline=1&rel=0' + (autoplay ? '&autoplay=1' : '');
+    f.title = current.name + 'の歌';
     f.setAttribute('allow', 'autoplay; encrypted-media; fullscreen');
     p.appendChild(f);
-    p.hidden = false;
-    $('thumbs').hidden = true;
-    $('btn-next').hidden = current.ids.length < 2;
+    renderSongBar();
+  }
+  function renderSongBar() {
+    var n = current.items.length, box = $('song-name'); clear(box);
+    if (current.idx >= 0) {
+      box.appendChild(document.createTextNode(current.items[current.idx].title || ''));
+      box.appendChild(el('span', 'pos', (current.idx + 1) + ' / ' + n + '曲'));
+    }
+    $('btn-prev').disabled = current.idx <= 0;
+    $('btn-next').disabled = current.idx < 0 || current.idx >= n - 1;
   }
   function openSinger(r) {
-    current = { ids: [], idx: -1, name: r['名前'] };
-    $('play-title').textContent = r['名前'];
-    var box = $('thumbs'); clear(box);
-    ['動画1', '動画2', '動画3'].forEach(function (k) {
+    var name = r['名前'];
+    current = { name: name, items: [], idx: -1 };
+    $('play-title').textContent = name;
+    Object.keys(r).forEach(function (k) {
+      if (!/^動画/.test(k.trim())) return;
       var id = videoId(r[k]);
-      if (id) current.ids.push(id);
+      if (id && !current.items.some(function (x) { return x.id === id; })) current.items.push({ id: id, title: '' });
     });
-    current.ids.forEach(function (id, i) {
-      var b = el('button', 'thumb'); b.type = 'button';
-      var img = el('img'); img.alt = ''; img.src = 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg';
-      b.appendChild(img);
-      b.appendChild(el('div', 'play', '▶'));
-      b.appendChild(el('span', 'lab', (i + 1) + '曲め'));
-      b.addEventListener('click', function () { play(i); });
-      box.appendChild(b);
-    });
-    if (!current.ids.length) box.appendChild(el('p', 'muted', 'この歌手の動画は、まだありません。家族に伝えてください。'));
+    if (videoLists[name]) current.items = videoLists[name];
     show('play');
-    stopPlayer();
+    if (current.items.length) cue(0, false);
+    else { renderSongBar(); $('player').appendChild(el('p', 'muted', 'さがしています…')); }
+    if (videoLists[name]) return;
+    api({ kind: 'videos', name: name }).then(function (res) {
+      if (current.name !== name || !res || !res.ok || !res.items || !res.items.length) {
+        if (current.name === name && !current.items.length) { clear($('player')); $('player').appendChild(el('p', 'muted', '歌が見つかりませんでした。')); }
+        return;
+      }
+      videoLists[name] = res.items;
+      var playingId = current.idx >= 0 ? current.items[current.idx].id : null;
+      current.items = res.items;
+      // 表の動画が先頭に来るので、ふつうは今出ている曲のまま。曲名と「○/○曲」だけ新しくする
+      var keep = playingId ? res.items.map(function (x) { return x.id; }).indexOf(playingId) : -1;
+      if (keep >= 0) { current.idx = keep; renderSongBar(); } else cue(0, false);
+    }, function () {});
   }
   $('btn-songs').addEventListener('click', function () { show('songs'); });
-  $('btn-play-back').addEventListener('click', function () {
-    if (current.idx >= 0) stopPlayer(); else show('songs');
-  });
-  $('btn-next').addEventListener('click', function () {
-    play((current.idx + 1) % current.ids.length);
-  });
+  $('btn-play-back').addEventListener('click', function () { show('songs'); });
+  $('btn-prev').addEventListener('click', function () { if (current.idx > 0) cue(current.idx - 1, true); });
+  $('btn-next').addEventListener('click', function () { if (current.idx < current.items.length - 1) cue(current.idx + 1, true); });
 
   /* ---------- 困ったボタン ---------- */
   function dialog(text, buttons) {
