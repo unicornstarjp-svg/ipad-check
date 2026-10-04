@@ -41,6 +41,10 @@ p{margin:0 0 12px}
 .item .when{min-width:5.5em;font-weight:700;color:var(--blue)}
 .item .what{font-weight:700}
 .item .note{display:block;font-weight:400;color:var(--muted);font-size:20px}
+.item.tap{cursor:pointer;align-items:center}
+.item .what{flex:1}
+.item .go{color:var(--muted);font-size:34px;line-height:1;padding-left:8px}
+.dlg .box p{white-space:pre-line}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:18px}
 .big{display:flex;align-items:center;justify-content:center;text-align:center;min-height:100px;padding:12px 18px;border:3px solid var(--blue);border-radius:18px;
   background:var(--card);color:var(--blue);font:inherit;font-size:28px;font-weight:700;text-decoration:none;cursor:pointer;width:100%}
@@ -76,12 +80,18 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   <div class="card">
     <h2>きょうの予定</h2>
     <div id="today"></div>
-    <div class="row"><button type="button" class="big small" id="btn-read" style="width:auto">予定を読んでもらう</button><button type="button" class="big small" id="btn-add-sched" style="width:auto">予定を足す（話す）</button></div>
+    <div class="row"><button type="button" class="big small" id="btn-read" style="width:auto">予定を読んでもらう</button><button type="button" class="big small" id="btn-add-sched" style="width:auto">予定を話す</button></div>
   </div>
 
   <div class="card" id="soon-card" hidden>
     <h2>これからの予定</h2>
     <div id="soon"></div>
+  </div>
+
+  <div class="card">
+    <h2>メモ</h2>
+    <div id="memos"></div>
+    <div class="row"><button type="button" class="big small" id="btn-memo" style="width:auto">メモを話す</button></div>
   </div>
 
   <div class="grid">
@@ -137,7 +147,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04b';
+  var VERSION = '2026-10-04c';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -233,7 +243,8 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   function spokenTime(t) {
     var m = (t || '').match(/(\d{1,2})\D+(\d{2})/);
     if (!m) return t || '';
-    return (+m[1]) + '時' + (m[2] === '00' ? '' : (+m[2]) + '分');
+    var h = +m[1], ampm = h === 12 ? 'お昼の' : h > 12 ? '午後' : '午前';
+    return ampm + (h > 12 ? h - 12 : h) + '時' + (m[2] === '00' ? '' : (+m[2]) + '分');
   }
   var todayItems = [];
   function renderSchedule() {
@@ -263,6 +274,10 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
       var what = el('div', 'what', x.r['内容']);
       if ((x.r['備考'] || '').trim()) what.appendChild(el('span', 'note', x.r['備考']));
       row.appendChild(what);
+      row.appendChild(el('div', 'go', '›'));
+      row.className = 'item tap';
+      row.setAttribute('role', 'button'); row.tabIndex = 0;
+      row.addEventListener('click', function () { scheduleMenu(x.r); });
       return row;
     }
     var box = $('today'); clear(box);
@@ -412,16 +427,27 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   var rec = null;
   function stopListen() { if (rec) { try { rec.abort(); } catch (e) {} rec = null; } }
-  function addByVoice(mode) {
+  function addByVoice(mode, opt) {
     var cancel = function () { stopListen(); closeDialog(); };
     if (!configured()) { dialog('先に設定が必要です。家族に伝えてください。', [{ label: 'とじる', fn: closeDialog }]); return; }
     if (!SR) { dialog('このiPadでは声が使えません。家族に伝えてください。', [{ label: 'とじる', fn: closeDialog }]); return; }
-    var again = function () { addByVoice(mode); };
     var failed = function (msg) {
       dialog(msg, [{ label: 'もう一度', cls: 'song', fn: again }, { label: 'やめる', fn: closeDialog }]);
     };
-    var ask = mode === 'schedule' ? '予定は何ですか？' : 'だれの歌を足しますか？';
-    var hint = mode === 'schedule' ? '（たとえば「来週の火曜、10時に病院」「毎週火曜はオレンジルーム」）' : '（歌手の名前を言ってください）';
+    var target = opt && opt.target;  // さわった予定を「変える」時は、その行
+    var again = function () { addByVoice(mode, opt); };
+    var ask = {
+      schedule: target ? 'どう変えますか？' : '予定のことを、話してください。',
+      singer: 'だれの歌を足しますか？',
+      memo: 'メモは何ですか？'
+    }[mode];
+    var hint = {
+      schedule: target
+        ? '\n' + describe(target) + '\n（たとえば「4時に変えて」「木曜日にして」）'
+        : '\n足す：「あしたの3時に美容院」\n変える：「美容院を4時に変えて」\n消す：「火曜のオレンジルームはやめ」',
+      singer: '\n（歌手の名前を言ってください）',
+      memo: '\n（話したことを、そのまま残します）'
+    }[mode];
     // 聞いてから、読み上げが終わったところで聞き取りを始める（読み上げの声を拾わないように）
     dialog(ask + hint, [{ label: 'やめる', fn: cancel }]);
     speak(ask, function () { if (!$('dlg').hidden) listen(true); });
@@ -452,49 +478,129 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     }
 
     function understand(heard) {
+      if (mode === 'memo') {
+        confirmAndSend('「' + heard + '」。メモしますか？', { kind: 'addMemo', text: heard }, 'メモしました。', again);
+        return;
+      }
       dialog('「' + heard + '」…考えています', []);
-      api({ kind: 'parse', mode: mode, text: heard }).then(function (r) {
+      api({ kind: 'parse', mode: mode, text: heard, target: target ? target._row : 0 }).then(function (r) {
         if (!r || !r.ok) { failed('うまく分かりませんでした。'); return; }
-        var q, send;
-        if (mode === 'schedule') {
-          var when;
-          if (r.weekly) {
-            when = '毎週 ' + r.weekly.split('').map(function (w) { return w + '曜日'; }).join('と') + '、';
-          } else {
-            var dates = r.dates || (r.date ? [r.date] : []);
-            when = dates.map(function (s) {
-              var m = s.split('/'), dt = new Date(+m[0], +m[1] - 1, +m[2]);
-              return (+m[1]) + '月' + (+m[2]) + '日（' + WEEK[dt.getDay()] + '）';
-            }).join('と') + '、';
-          }
-          q = when + (r.time ? spokenTime(r.time) + 'に、' : '') + r.content + '。これでいいですか？';
-          send = { kind: 'addSchedule', dates: r.dates || (r.date ? [r.date] : []), weekly: r.weekly || '', time: r.time, content: r.content, note: r.note };
-        } else {
-          q = r.name + '。これでいいですか？';
-          send = { kind: 'addSinger', name: r.name };
+        if (mode === 'singer') {
+          confirmAndSend(r.name + '。これでいいですか？', { kind: 'addSinger', name: r.name }, '書きました。', again);
+          return;
         }
-        speak(q);
-        dialog(q, [
-          { label: 'はい', cls: 'song', fn: function () {
-            dialog('書いています…', []);
-            api(send).then(function (w) {
-              if (!w || !w.ok) { failed('書けませんでした。'); return; }
-              speak('書きました。');
-              dialog('書きました。', [{ label: 'とじる', fn: closeDialog }]);
-              load();
-            }, function () { failed('つながりませんでした。'); });
-          } },
-          { label: 'もう一度', fn: again },
-          { label: 'やめる', fn: closeDialog }
-        ]);
+        var b = r.before, after = whenText(r) + r.content;
+        if (r.action === 'delete') {
+          confirmAndSend(describe(b) + '。この予定を消します。いいですか？', deleteReq('予定', b), '消しました。', again);
+        } else if (r.action === 'update') {
+          var sameDay = !r.weekly && (r.dates || [])[0] && parseDate(r.dates[0]) && parseDate(b['日付']) &&
+                        +parseDate(r.dates[0]) === +parseDate(b['日付']) && r.content === b['内容'];
+          var q = sameDay
+            ? describe(b) + 'の時間を、' + (r.time ? spokenTime(r.time) + 'に' : '時刻なしに') + '変えます。いいですか？'
+            : describe(b) + 'を、' + after + 'に変えます。いいですか？';
+          confirmAndSend(q,
+            { kind: 'updateSchedule', row: b._row, expect: { '日付': b['日付'], '内容': b['内容'] },
+              weekly: r.weekly, dates: r.dates, time: r.time, content: r.content, note: r.note }, '変えました。', again);
+        } else {
+          confirmAndSend(after + '。これでいいですか？',
+            { kind: 'addSchedule', dates: r.dates || (r.date ? [r.date] : []), weekly: r.weekly || '', time: r.time, content: r.content, note: r.note }, '書きました。', again);
+        }
       }, function () { failed('つながりませんでした。'); });
     }
   }
+
+  // 読み上げて確かめ、「はい」で送る。表が先に変わっていた時は、読み込み直してやり直してもらう
+  function confirmAndSend(q, send, doneMsg, again) {
+    var failed = function (msg) {
+      dialog(msg, [{ label: 'もう一度', cls: 'song', fn: again }, { label: 'やめる', fn: closeDialog }]);
+    };
+    speak(q);
+    var buttons = [
+      { label: 'はい', cls: 'song', fn: function () {
+        dialog('書いています…', []);
+        api(send).then(function (w) {
+          if (w && w.changed) { load(); failed('予定の表が変わっていました。もう一度、お願いします。'); return; }
+          if (!w || !w.ok) { failed('書けませんでした。'); return; }
+          speak(doneMsg);
+          dialog(doneMsg, [{ label: 'とじる', fn: closeDialog }]);
+          load();
+        }, function () { failed('つながりませんでした。'); });
+      } }
+    ];
+    if (again) buttons.push({ label: 'もう一度', fn: again });
+    buttons.push({ label: 'やめる', fn: closeDialog });
+    dialog(q, buttons);
+  }
+  function deleteReq(sheet, o) {
+    var first = sheet === '予定' ? o['日付'] : o['日時'];
+    return { kind: 'deleteRow', sheet: sheet, row: o._row, expect: { first: first, content: o['内容'] } };
+  }
+  // AIの結果 → 「10月8日（木）と10月9日（金）、3時に、」のような読み上げ用の言葉
+  function whenText(r) {
+    var when;
+    if (r.weekly) {
+      when = r.weekly === '月火水木金土日' ? '毎日、' : '毎週 ' + r.weekly.split('').map(function (w) { return w + '曜日'; }).join('と') + '、';
+    } else {
+      when = (r.dates || (r.date ? [r.date] : [])).map(function (s) {
+        var m = s.split('/'), dt = new Date(+m[0], +m[1] - 1, +m[2]);
+        return (+m[1]) + '月' + (+m[2]) + '日（' + WEEK[dt.getDay()] + '）';
+      }).join('と') + '、';
+    }
+    return when + (r.time ? spokenTime(r.time) + 'に、' : '');
+  }
+  // 表の1行 → 「10月8日（木）、3時の、プール」「毎週 火曜日の、オレンジルーム」
+  function describe(o) {
+    var d = o['日付'] || '', when;
+    var wk = weeklyDays(d);
+    if (wk) when = wk.length === 7 ? '毎日' : '毎週 ' + wk.map(function (i) { return WEEK[i] + '曜日'; }).join('と');
+    else {
+      var dt = parseDate(d);
+      when = dt ? (dt.getMonth() + 1) + '月' + dt.getDate() + '日（' + WEEK[dt.getDay()] + '）' : d;
+    }
+    return when + '、' + (o['時刻'] ? spokenTime(o['時刻']) + 'の、' : '') + o['内容'];
+  }
+
+  /* ---------- さわって消す・変える ---------- */
+  function scheduleMenu(o) {
+    dialog(describe(o) + (weeklyDays(o['日付']) ? '\n（くりかえしの予定）' : '') + '\nどうしますか？', [
+      { label: '変える（話す）', cls: 'song', fn: function () { addByVoice('schedule', { target: o }); } },
+      { label: '消す', cls: 'help', fn: function () {
+        confirmAndSend(describe(o) + '。この予定を消します。いいですか？', deleteReq('予定', o), '消しました。', null);
+      } },
+      { label: 'やめる', fn: closeDialog }
+    ]);
+  }
+  function memoMenu(o) {
+    dialog('「' + o['内容'] + '」\nこのメモを、どうしますか？', [
+      { label: '読む', cls: 'song', fn: function () { speak(o['内容']); } },
+      { label: '消す', cls: 'help', fn: function () {
+        confirmAndSend('このメモを消します。いいですか？', deleteReq('メモ', o), '消しました。', null);
+      } },
+      { label: 'とじる', fn: closeDialog }
+    ]);
+  }
+  function renderMemos() {
+    var box = $('memos'); clear(box);
+    var rows = (data['メモ'] || []).filter(function (o) { return (o['内容'] || '').trim(); }).slice(-5).reverse();
+    if (!rows.length) { box.appendChild(el('p', 'muted', 'メモは、ありません。')); return; }
+    rows.forEach(function (o) {
+      var row = el('div', 'item tap');
+      var m = (o['日時'] || '').match(/(\d{1,2})\D+(\d{1,2})\D+(\d{1,2}:\d{2})/);
+      row.appendChild(el('div', 'when', m ? (+m[1]) + '/' + (+m[2]) + ' ' + m[3] : ''));
+      row.appendChild(el('div', 'what', o['内容']));
+      row.appendChild(el('div', 'go', '›'));
+      row.setAttribute('role', 'button'); row.tabIndex = 0;
+      row.addEventListener('click', function () { memoMenu(o); });
+      box.appendChild(row);
+    });
+  }
+
   $('btn-add-sched').addEventListener('click', function () { addByVoice('schedule'); });
   $('btn-add-singer').addEventListener('click', function () { addByVoice('singer'); });
+  $('btn-memo').addEventListener('click', function () { addByVoice('memo'); });
 
   /* ---------- 起動 ---------- */
-  function renderAll() { renderSchedule(); renderSingers(); }
+  function renderAll() { renderSchedule(); renderSingers(); renderMemos(); }
 
   (function importHash() {
     var h = location.hash.replace(/^#/, '');
