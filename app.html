@@ -99,7 +99,10 @@ p{margin:0}
 .pager span{font-size:22px;color:var(--muted);min-width:5em;text-align:center}
 
 /* 歌：YouTubeのプレーヤーを最初から大きく出す。真ん中の▶を1回さわれば再生（iPadはページのボタンからの自動再生を許さないため） */
-.songname{font-size:24px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 0 auto}
+.songline{display:flex;align-items:center;gap:12px;flex:0 0 auto;min-width:0}
+.songname{font-size:24px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.mbadge{flex:0 0 auto;font-size:20px;font-weight:700;padding:4px 14px;border-radius:999px;border:3px solid var(--blue);color:var(--blue);background:var(--card);white-space:nowrap}
+.mbadge.kara{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
 .songname .pos{color:var(--muted);font-weight:400;margin-left:12px}
 .stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;container-type:size}
 .stage .muted{font-size:26px}
@@ -269,7 +272,8 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   </div>
   <div class="stage2">
     <div class="pcol">
-      <div class="songname" id="song-name"></div>
+      <!-- 曲名の行の先頭に、ふつうの歌かカラオケかの目印（一覧付きでも大きくしても、縦向きでも出る） -->
+      <div class="songline"><span class="mbadge" id="play-mode"></span><div class="songname" id="song-name"></div></div>
       <div class="stage"><div class="player" id="player"></div></div>
       <p class="adnote">歌が終わると、つぎの歌に進みます（さいごまで行くと、はじめから）。<br>はじめにコマーシャルが出ることがあります。右下の「スキップ」をさわると、歌になります。</p>
     </div>
@@ -313,7 +317,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04z';
+  var VERSION = '2026-10-05a';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -939,7 +943,9 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   function openSinger(r) {
     var name = r['名前'], mode = songMode, key = mode + ':' + name;
     current = { name: name, key: key, items: [], idx: -1 };
-    $('play-title').textContent = name + (mode === 'karaoke' ? '（カラオケ）' : '');
+    $('play-title').textContent = name;
+    $('play-mode').textContent = mode === 'karaoke' ? '🎤 カラオケ' : '♪ ふつうの歌';
+    $('play-mode').classList.toggle('kara', mode === 'karaoke');
     if (mode === 'song') {
       Object.keys(r).forEach(function (k) {
         if (!/^動画/.test(k.trim())) return;
