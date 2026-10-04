@@ -91,6 +91,23 @@ p{margin:0}
 @container (min-width:0px){ .player{width:min(100cqw, calc(100cqh * 16 / 9))} }
 .player iframe{width:100%;height:100%;border:0;display:block}
 .big:disabled{opacity:.35;cursor:default}
+/* 左にプレーヤー、右に曲の一覧（縦向きは上下）。一覧はスワイプの代わりに「上へ・下へ」 */
+.stage2{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:16px}
+.pcol{display:flex;flex-direction:column;gap:8px;min-height:0}
+.adnote{font-size:20px;font-weight:700;color:var(--text);flex:0 0 auto;line-height:1.4}
+@media (orientation:portrait){
+  .stage2{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .pcol .stage{flex:none;height:calc((100vw - 32px) * 9 / 16)}
+}
+.card.songs{padding:10px}
+.sitem{display:flex;gap:12px;align-items:center;height:84px;padding:4px 6px;border-radius:12px;cursor:pointer}
+.sitem + .sitem{margin-top:6px}
+.sitem img{width:120px;height:68px;object-fit:cover;border-radius:8px;flex:0 0 auto;background:var(--chip)}
+.sitem .t{font-size:20px;font-weight:700;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:normal}
+.sitem.on{background:var(--chip);box-shadow:inset 0 0 0 3px var(--accent)}
+.lpager{display:flex;gap:10px;align-items:center;justify-content:space-between;flex:0 0 auto;padding-top:8px}
+.lpager .big{min-height:64px;font-size:22px;padding:6px 14px}
+.lpager span{font-size:20px;color:var(--muted)}
 
 /* 設定（家族用）だけは、はみ出したらスクロールしてよい */
 #v-set{overflow:auto}
@@ -158,9 +175,20 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     <button type="button" class="big small" id="btn-prev">◀ まえの歌</button>
     <button type="button" class="big small song" id="btn-next">つぎの歌 ▶</button>
   </div>
-  <div class="songname" id="song-name"></div>
-  <div class="stage">
-    <div class="player" id="player"></div>
+  <div class="stage2">
+    <div class="pcol">
+      <div class="songname" id="song-name"></div>
+      <div class="stage"><div class="player" id="player"></div></div>
+      <p class="adnote">はじめにコマーシャルが出ることがあります。右下の「スキップ」をさわると、歌になります。</p>
+    </div>
+    <div class="card songs">
+      <div class="list" id="song-list"></div>
+      <div class="lpager">
+        <button type="button" class="big small" id="sl-prev">▲ 上へ</button>
+        <span id="sl-info"></span>
+        <button type="button" class="big small" id="sl-next">下へ ▼</button>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -193,7 +221,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04e';
+  var VERSION = '2026-10-04f';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -429,8 +457,35 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     f.title = current.name + 'の歌';
     f.setAttribute('allow', 'autoplay; encrypted-media; fullscreen');
     p.appendChild(f);
+    listPage = Math.floor(i / perPage());  // 流している曲が一覧に見えるページへ
     renderSongBar();
   }
+
+  // 一覧は1行の高さを決めてあるので、入る行数＝1ページの曲数
+  var listPage = 0, ROW = 90;
+  function perPage() { return Math.max(1, Math.floor(($('song-list').clientHeight + 6) / ROW)); }
+  function renderSongList() {
+    var box = $('song-list'); clear(box);
+    if (!box.clientHeight) return;
+    var n = current.items.length, pp = perPage(), pages = Math.max(1, Math.ceil(n / pp));
+    if (listPage >= pages) listPage = pages - 1;
+    if (listPage < 0) listPage = 0;
+    current.items.slice(listPage * pp, listPage * pp + pp).forEach(function (it, k) {
+      var i = listPage * pp + k;
+      var row = el('div', 'sitem' + (i === current.idx ? ' on' : ''));
+      row.setAttribute('role', 'button'); row.tabIndex = 0;
+      var img = el('img'); img.alt = ''; img.src = 'https://i.ytimg.com/vi/' + it.id + '/mqdefault.jpg';
+      row.appendChild(img);
+      row.appendChild(el('div', 't', it.title || (i + 1) + '曲め'));
+      row.addEventListener('click', function () { cue(i, true); });
+      box.appendChild(row);
+    });
+    $('sl-info').textContent = n ? (listPage + 1) + ' / ' + pages : '';
+    $('sl-prev').disabled = listPage === 0;
+    $('sl-next').disabled = listPage >= pages - 1;
+  }
+  $('sl-prev').addEventListener('click', function () { listPage--; renderSongList(); });
+  $('sl-next').addEventListener('click', function () { listPage++; renderSongList(); });
   function renderSongBar() {
     var n = current.items.length, box = $('song-name'); clear(box);
     if (current.idx >= 0) {
@@ -439,6 +494,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     }
     $('btn-prev').disabled = current.idx <= 0;
     $('btn-next').disabled = current.idx < 0 || current.idx >= n - 1;
+    renderSongList();
   }
   function openSinger(r) {
     var name = r['名前'];
@@ -714,7 +770,14 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   }
   // 向きを変えた時は、入りきる数が変わるので並べ直す
   var resizeTimer = null;
-  window.addEventListener('resize', function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderAll, 200); });
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      renderAll();
+      if (current.idx >= 0) listPage = Math.floor(current.idx / perPage());
+      renderSongList();
+    }, 200);
+  });
 
   (function importHash() {
     var h = location.hash.replace(/^#/, '');
