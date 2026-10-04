@@ -95,6 +95,16 @@ p{margin:0}
 @container (min-width:0px){ .player{width:min(100cqw, calc(100cqh * 16 / 9))} }
 .player iframe{width:100%;height:100%;border:0;display:block}
 .big:disabled{opacity:.35;cursor:default}
+/* 大きくする：YouTubeの全画面は閉じるボタンが小さくて母には戻せないので、おたすけの中で動画だけを画面いっぱいにする。
+   上の帯には「小さくする」と「つぎの歌」だけを残す */
+#btn-small{display:none}
+#v-play.bigmode #btn-small{display:flex}
+#v-play.bigmode #btn-play-back, #v-play.bigmode #btn-prev, #v-play.bigmode #btn-big,
+#v-play.bigmode .songname, #v-play.bigmode .adnote, #v-play.bigmode .card.songs{display:none}
+#v-play.bigmode .stage2{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+#v-play.bigmode .pcol .stage{flex:1;height:auto}
+#v-play.bigmode{gap:8px}
+@media (orientation:portrait){ #v-play .bar h2{visibility:hidden} }  /* 縦向きは帯が狭いので歌手名を出さない（曲名はすぐ下に出る） */
 /* 左にプレーヤー、右に曲の一覧（縦向きは上下）。一覧はスワイプの代わりに「上へ・下へ」 */
 .stage2{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:16px}
 .pcol{display:flex;flex-direction:column;gap:8px;min-height:0}
@@ -210,9 +220,11 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
 <section id="v-play" class="view" hidden>
   <div class="bar">
     <button type="button" class="big small" id="btn-play-back">もどる</button>
+    <button type="button" class="big small" id="btn-small">◀ 小さくする</button>
     <h2 id="play-title"></h2>
     <button type="button" class="big small" id="btn-prev">◀ まえの歌</button>
     <button type="button" class="big small song" id="btn-next">つぎの歌 ▶</button>
+    <button type="button" class="big small" id="btn-big">⛶ 大きくする</button>
   </div>
   <div class="stage2">
     <div class="pcol">
@@ -260,7 +272,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04m';
+  var VERSION = '2026-10-04n';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -501,6 +513,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     return ytLoading;
   }
   function stopPlayer() {
+    $('v-play').classList.remove('bigmode');  // 歌の画面を出るときは、大きくしていたのも戻す
     if (yt) { try { yt.destroy(); } catch (e) {} }
     yt = null; ytOk = false;
     clear($('player'));  // プレーヤーを外すと音も止まる
@@ -766,6 +779,12 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   }
   $('btn-songs').addEventListener('click', function () { show('songs'); });
   $('btn-play-back').addEventListener('click', function () { show('songs'); });
+  function bigMode(on) {
+    $('v-play').classList.toggle('bigmode', on);
+    if (!on) setTimeout(renderSongList, 50);  // 一覧の高さが戻ってから並べ直す
+  }
+  $('btn-big').addEventListener('click', function () { bigMode(true); });
+  $('btn-small').addEventListener('click', function () { bigMode(false); });
   $('btn-prev').addEventListener('click', function () { if (current.idx > 0) cue(current.idx - 1, true); });
   $('btn-next').addEventListener('click', function () { nextSong(true); });
 
