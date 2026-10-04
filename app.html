@@ -136,6 +136,8 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
+  // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
+  var VERSION = '2026-10-04a';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -466,8 +468,21 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   load();
   setInterval(load, 10 * 60 * 1000);
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible') { tick(); if (configured()) load(); }
+    if (document.visibilityState === 'visible') { tick(); checkUpdate(); if (configured()) load(); }
   });
+
+  /* ---------- 新しい版があれば読み込み直す（再生中・ダイアログ表示中は待つ） ---------- */
+  function checkUpdate() {
+    fetch('version.txt?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (v) {
+      v = v.trim();
+      if (!v || v === VERSION) return;
+      if (!$('v-play').hidden || !$('dlg').hidden || !$('v-set').hidden) return;
+      try { if (localStorage.getItem('otasuke.reload') === v) return; localStorage.setItem('otasuke.reload', v); } catch (e) { return; }
+      location.replace(location.pathname + '?v=' + encodeURIComponent(v));
+    }).catch(function () {});
+  }
+  checkUpdate();
+  setInterval(checkUpdate, 30 * 60 * 1000);
 })();
 </script>
 </body>
