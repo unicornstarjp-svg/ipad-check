@@ -272,7 +272,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04n';
+  var VERSION = '2026-10-04o';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -674,15 +674,15 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   // 母が押すのは、FaceTimeに出る「共有」と、操作を頼まれた時の「許可」だけ。かける前に家族にも知らせる
   function shareCall(o) {
     var name = o['名前'].trim();
+    // iPadOS 26 の FaceTime では、画面共有は右下の「…」のメニューの中にある（2026-10-04 圭介さんのiPadで確認）
     var text = name + 'に、画面を見てもらいます。\n' +
-      'つながったら、「画面を見て」と言ってください。\n' +
-      '「共有」と出たら、「共有」をさわります。\n' +
+      'つながったら、右下の「…」をさわって、「画面共有」をさわります。\n' +
       '「許可」と出たら、「許可」をさわります。';
     speak(text.replace(/\n/g, ''));
     dialog(text, [
       { label: 'かける', cls: 'song', href: 'facetime://' + facetimeAddr(o['FaceTime']), fn: function () {
         hush();
-        if (configured()) api({ kind: 'help', text: 'iPadの画面を見てほしいそうです。' + name + 'にFaceTimeをかけます（画面共有を頼んでください）' }).catch(function () {});
+        if (configured()) api({ kind: 'help', text: 'iPadの画面を見てほしいそうです。' + name + 'にFaceTimeをかけます（母が「…」→「画面共有」を押します）' }).catch(function () {});
         setTimeout(closeDialog, 500);
       } },
       { label: 'やめる', fn: function () { hush(); closeDialog(); } }
