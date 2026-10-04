@@ -112,8 +112,8 @@ p{margin:0}
    上の帯には「小さくする」と「つぎの歌」だけを残す */
 #btn-small{display:none}
 #v-play.bigmode #btn-small{display:flex}
-#v-play.bigmode #btn-play-back, #v-play.bigmode #btn-prev, #v-play.bigmode #btn-big,
-#v-play.bigmode .songname, #v-play.bigmode .adnote, #v-play.bigmode .card.songs{display:none}
+#v-play.bigmode #btn-play-back, #v-play.bigmode #btn-prev, #v-play.bigmode #btn-big,  /* 曲名（.songname）は大きくしても出す */
+#v-play.bigmode .adnote, #v-play.bigmode .card.songs{display:none}
 #v-play.bigmode .stage2{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
 #v-play.bigmode .pcol .stage{flex:1;height:auto}
 #v-play.bigmode{gap:8px}
@@ -313,7 +313,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04y';
+  var VERSION = '2026-10-04z';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
