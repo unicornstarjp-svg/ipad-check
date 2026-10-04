@@ -179,7 +179,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     <div class="pcol">
       <div class="songname" id="song-name"></div>
       <div class="stage"><div class="player" id="player"></div></div>
-      <p class="adnote">はじめにコマーシャルが出ることがあります。右下の「スキップ」をさわると、歌になります。</p>
+      <p class="adnote">歌が終わると、つぎの歌に進みます（さいごまで行くと、はじめから）。<br>はじめにコマーシャルが出ることがあります。右下の「スキップ」をさわると、歌になります。</p>
     </div>
     <div class="card songs">
       <div class="list" id="song-list"></div>
@@ -221,7 +221,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04f';
+  var VERSION = '2026-10-04g';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -443,22 +443,73 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   // 曲の一覧は、まず表の「動画1〜」の列。そのあと窓口に聞いて、YouTube検索の結果（最大20曲）に入れ替える
   var current = { name: '', items: [], idx: -1 };
   var videoLists = {};  // 歌手ごとに、このページを開いている間だけ覚えておく
+  // YouTube のプレーヤーの仕組み（IFrame Player API）で、曲の終わりを知って次の曲へ進む。最後の曲のあとは最初に戻る。
+  // 同じプレーヤーのまま曲を替えるので、iPadでも最初に1回▶をさわれば、あとは続けて流れる見込み。
+  // 仕組みが読めない時（ネットが細い等）は、ふつうの埋め込みにする（その時は自動で次へは進まない）
+  var yt = null, ytOk = false, ytLoading = null, errors = 0;
+  function loadYT() {
+    if (window.YT && window.YT.Player) return Promise.resolve();
+    if (ytLoading) return ytLoading;
+    ytLoading = new Promise(function (resolve, reject) {
+      window.onYouTubeIframeAPIReady = resolve;
+      var s = document.createElement('script');
+      s.src = 'https://www.youtube.com/iframe_api';
+      s.onerror = reject;
+      document.head.appendChild(s);
+      setTimeout(reject, 10000);
+    });
+    ytLoading.catch(function () { ytLoading = null; });  // 失敗したら、次の曲の時にもう一度ためす
+    return ytLoading;
+  }
   function stopPlayer() {
-    clear($('player'));  // iframe を外すと音も止まる
+    if (yt) { try { yt.destroy(); } catch (e) {} }
+    yt = null; ytOk = false;
+    clear($('player'));  // プレーヤーを外すと音も止まる
     current.idx = -1;
+  }
+  function plainPlayer(id, autoplay) {
+    var p = $('player'); clear(p);
+    var f = el('iframe');
+    f.src = 'https://www.youtube.com/embed/' + id + '?playsinline=1&rel=0' + (autoplay ? '&autoplay=1' : '');
+    f.title = current.name + 'の歌';
+    f.setAttribute('allow', 'autoplay; encrypted-media; fullscreen');
+    p.appendChild(f);
   }
   function cue(i, autoplay) {
     var it = current.items[i];
     if (!it) return;
     current.idx = i;
-    var p = $('player'); clear(p);
-    var f = el('iframe');
-    f.src = 'https://www.youtube.com/embed/' + it.id + '?playsinline=1&rel=0' + (autoplay ? '&autoplay=1' : '');
-    f.title = current.name + 'の歌';
-    f.setAttribute('allow', 'autoplay; encrypted-media; fullscreen');
-    p.appendChild(f);
     listPage = Math.floor(i / perPage());  // 流している曲が一覧に見えるページへ
     renderSongBar();
+    var name = current.name;
+    loadYT().then(function () {
+      if (current.name !== name || current.idx !== i) return;  // 待っている間に、別の曲・別の画面になった
+      if (yt && ytOk) { if (autoplay) yt.loadVideoById(it.id); else yt.cueVideoById(it.id); return; }
+      if (yt) { try { yt.destroy(); } catch (e) {} }
+      var p = $('player'); clear(p);
+      var holder = el('div'); p.appendChild(holder);
+      ytOk = false;
+      yt = new YT.Player(holder, {
+        width: '100%', height: '100%', videoId: it.id,
+        playerVars: { playsinline: 1, rel: 0, autoplay: autoplay ? 1 : 0 },
+        events: {
+          onReady: function () { ytOk = true; },
+          onStateChange: function (e) {
+            if (e.data === 1) errors = 0;      // 再生が始まった
+            if (e.data === 0) nextSong(true);  // 曲が終わった
+          },
+          // 「ここでは再生できません」の曲は飛ばす（全部だめなら止まる）
+          onError: function () { errors++; if (errors < current.items.length) nextSong(true); }
+        }
+      });
+    }, function () {
+      if (current.name !== name || current.idx !== i) return;
+      plainPlayer(it.id, autoplay);
+    });
+  }
+  function nextSong(autoplay) {
+    var n = current.items.length;
+    if (n) cue((current.idx + 1) % n, autoplay);
   }
 
   // 一覧は1行の高さを決めてあるので、入る行数＝1ページの曲数
@@ -493,7 +544,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
       box.appendChild(el('span', 'pos', (current.idx + 1) + ' / ' + n + '曲'));
     }
     $('btn-prev').disabled = current.idx <= 0;
-    $('btn-next').disabled = current.idx < 0 || current.idx >= n - 1;
+    $('btn-next').disabled = current.idx < 0 || n < 2;  // 最後の曲の「つぎ」は、最初の曲に戻る
     renderSongList();
   }
   function openSinger(r) {
@@ -526,7 +577,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   $('btn-songs').addEventListener('click', function () { show('songs'); });
   $('btn-play-back').addEventListener('click', function () { show('songs'); });
   $('btn-prev').addEventListener('click', function () { if (current.idx > 0) cue(current.idx - 1, true); });
-  $('btn-next').addEventListener('click', function () { if (current.idx < current.items.length - 1) cue(current.idx + 1, true); });
+  $('btn-next').addEventListener('click', function () { nextSong(true); });
 
   /* ---------- 困ったボタン ---------- */
   function dialog(text, buttons) {
