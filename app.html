@@ -310,7 +310,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04v';
+  var VERSION = '2026-10-04w';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -1026,7 +1026,13 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   /* ---------- 声で足す（話す→AIが整理→読み返して確認→書き込み） ---------- */
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   var rec = null;
-  function stopListen() { if (rec) { try { rec.abort(); } catch (e) {} rec = null; } }
+  // 「やめる」を押した時：聞き取りを止めて、マイクを手放す
+  function stopListen() {
+    if (!rec) return;
+    var me = rec; rec = null;
+    me.onresult = me.onerror = me.onend = null;
+    try { me.abort(); } catch (e) {}
+  }
   function addByVoice(mode, opt) {
     var cancel = function () { stopListen(); closeDialog(); };
     if (!configured()) { dialog('先に設定が必要です。家族に伝えてください。', [{ label: 'とじる', fn: closeDialog }]); return; }
@@ -1053,20 +1059,29 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     speak(ask, function () { if (!$('dlg').hidden) listen(true); });
 
     // auto：読み上げのあとに自動で始めた時。iPadに断られたら「話す」ボタンを出して、押してから始める
+    // 聞き取りが終わったら、マイクをはっきり手放す（そのままだと、iPadの右上のマイクの印が残り続けるため）
+    function release(me) {
+      if (!me) return;
+      me.onresult = me.onerror = me.onend = null;
+      try { me.abort(); } catch (e) {}
+    }
     function listen(auto) {
       var heard = '';
-      rec = new SR();
+      var me = rec = new SR();
       rec.lang = 'ja-JP'; rec.interimResults = false; rec.maxAlternatives = 1; rec.continuous = false;
-      rec.onresult = function (ev) { heard = ev.results[0][0].transcript; };
+      // 1回聞き取れたら、すぐに聞き取りを止める
+      rec.onresult = function (ev) { heard = ev.results[0][0].transcript; try { me.stop(); } catch (e) {} };
       rec.onerror = function (ev) {
         if (ev.error === 'aborted') return;
-        rec = null;
+        if (rec === me) rec = null;
+        release(me);
         if (auto && /not-allowed/.test(ev.error)) { askTap(); return; }
         failed('聞きとれませんでした。');
       };
       rec.onend = function () {
-        if (!rec) return;
+        if (rec !== me) return;
         rec = null;
+        release(me);
         if (!heard.trim()) { failed('聞きとれませんでした。'); return; }
         understand(heard);
       };
