@@ -68,6 +68,9 @@ p{margin:0}
   background:var(--card);color:var(--blue);font:inherit;font-size:28px;font-weight:700;line-height:1.3;text-decoration:none;cursor:pointer;width:100%}
 .btns .big{min-height:0;height:100%}
 .btns .wide{grid-column:1/-1}
+/* 欄の下の「▲ 上へ／下へ ▼」 */
+.cpager{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:0 0 auto;padding-top:6px}
+.cpager span{font-size:20px;color:var(--muted)}
 /* 欄の見出しの横のボタン */
 .chead{display:flex;align-items:center;gap:10px;margin-bottom:4px;flex:0 0 auto;flex-wrap:wrap}  /* 狭い時は、ボタンが見出しの下に回り込む */
 .chead h2{flex:1 0 auto;white-space:nowrap}  /* 見出しは縮めない（入らない時はボタンが下の行へ） */
@@ -166,6 +169,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
           <button type="button" class="big mini" id="btn-add-sched">🎤 予定を話す</button>
         </div>
         <div class="list" id="sched"></div>
+        <div class="cpager" id="pg-sched" hidden><button type="button" class="big mini up">▲ 上へ</button><span></span><button type="button" class="big mini down">下へ ▼</button></div>
       </div>
       <div class="card memo">
         <div class="chead">
@@ -173,12 +177,14 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
           <button type="button" class="big mini" id="btn-memo">🎤 メモを話す</button>
         </div>
         <div class="list" id="memos"></div>
+        <div class="cpager" id="pg-memos" hidden><button type="button" class="big mini up">▲ 上へ</button><span></span><button type="button" class="big mini down">下へ ▼</button></div>
       </div>
     </div>
     <!-- 右：これから1週間の予定 -->
     <div class="card week">
-      <h2>これから1週間の予定</h2>
+      <h2>これからの予定</h2>
       <div class="list" id="sched2"></div>
+        <div class="cpager" id="pg-sched2" hidden><button type="button" class="big mini up">▲ 上へ</button><span></span><button type="button" class="big mini down">下へ ▼</button></div>
     </div>
   </div>
   <!-- TVer・困った・Amazonプライム・みてねは外した（2026-10-04） -->
@@ -288,7 +294,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04s';
+  var VERSION = '2026-10-04t';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -388,50 +394,109 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     var h = +m[1], ampm = h === 12 ? 'お昼の' : h > 12 ? '午後' : '午前';
     return ampm + (h > 12 ? h - 12 : h) + '時' + (m[2] === '00' ? '' : (+m[2]) + '分');
   }
-  // days[0] がきょう、days[1]〜[7] がこれから1週間（あした〜7日後）。毎週の予定も、その曜日の日に入れる
-  var days = [];
+  // todayItems：きょうの予定（毎週の予定のうち、きょうの曜日のものも入る）
+  // upcoming：あした以降の日付の予定を日ごとにまとめたもの（日数の上限なし）。毎週の予定（定期）は入れない
+  var todayItems = [], upcoming = [];
   function renderSchedule() {
     var rows = data['予定'] || [], now = new Date();
     var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    days = [];
-    for (var d = 0; d <= 7; d++) days.push({ dt: new Date(today.getFullYear(), today.getMonth(), today.getDate() + d), items: [] });
+    var byDay = {};
+    todayItems = []; upcoming = [];
     rows.forEach(function (r) {
       if (!(r['内容'] || '').trim()) return;
       var wk = weeklyDays(r['日付']);
-      if (wk) {
-        days.forEach(function (day) { if (wk.indexOf(day.dt.getDay()) >= 0) day.items.push(r); });
-        return;
-      }
+      if (wk) { if (wk.indexOf(today.getDay()) >= 0) todayItems.push(r); return; }
       var dt = parseDate(r['日付']);
       if (!dt) return;
       var diff = Math.round((dt - today) / 864e5);
-      if (diff >= 0 && diff <= 7) days[diff].items.push(r);
+      if (diff === 0) todayItems.push(r);
+      else if (diff > 0) {
+        if (!byDay[diff]) { byDay[diff] = { dt: dt, diff: diff, items: [] }; upcoming.push(byDay[diff]); }
+        byDay[diff].items.push(r);
+      }
     });
     // 時刻は「9:00」と「15:00」を文字で比べると順番が狂うので、分に直して比べる（時刻なしは先頭）
     var mins = function (s) { var m = String(s || '').match(/(\d{1,2})\D+(\d{2})/); return m ? +m[1] * 60 + +m[2] : -1; };
-    days.forEach(function (day) { day.items.sort(function (a, b) { return mins(a['時刻']) - mins(b['時刻']); }); });
+    var byTime = function (a, b) { return mins(a['時刻']) - mins(b['時刻']); };
+    todayItems.sort(byTime);
+    upcoming.sort(function (a, b) { return a.diff - b.diff; });
+    upcoming.forEach(function (g) { g.items.sort(byTime); });
 
     function item(r) {
-      var what = el('div', 'what', r['内容']);
-      if ((r['備考'] || '').trim()) what.appendChild(el('span', 'note', r['備考']));
-      return tapItem(r['時刻'] || '', what, function () { scheduleMenu(r); });
+      return function () {
+        var what = el('div', 'what', r['内容']);
+        if ((r['備考'] || '').trim()) what.appendChild(el('span', 'note', r['備考']));
+        return tapItem(r['時刻'] || '', what, function () { scheduleMenu(r); });
+      };
     }
+    function note(text) { return function () { return el('p', 'muted', text); }; }
+
     // きょうの欄
-    var box = $('sched'); clear(box);
-    if (!days[0].items.length) box.appendChild(el('p', 'muted', 'きょうの予定は、ありません。'));
-    days[0].items.forEach(function (r) { box.appendChild(item(r)); });
-    fitList(box);
-    // これから1週間の欄：日ごとに見出し（あした 10/5（月））と予定。予定のない日は出さない。入りきらない分は後ろから「ほか○件」
-    var box2 = $('sched2'), any = false; clear(box2);
-    days.slice(1).forEach(function (day, k) {
-      if (!day.items.length) return;
-      any = true;
-      var label = (k === 0 ? 'あした　' : '') + (day.dt.getMonth() + 1) + '/' + day.dt.getDate() + '（' + WEEK[day.dt.getDay()] + '）';
-      box2.appendChild(el('div', 'sub', label));
-      day.items.forEach(function (r) { box2.appendChild(item(r)); });
+    var rows1 = todayItems.map(function (r) { return { kind: 'item', make: item(r), group: -1 }; });
+    if (!rows1.length) rows1.push({ kind: 'note', make: note('きょうの予定は、ありません。'), group: -1 });
+    pagedList('sched', rows1);
+
+    // これからの欄：日ごとに見出し（あした 10/5（月））と予定。年が変わる時は年も出す
+    var rows2 = [];
+    upcoming.forEach(function (g) {
+      var label = (g.diff === 1 ? 'あした　' : '') + (g.dt.getFullYear() !== today.getFullYear() ? g.dt.getFullYear() + '/' : '') +
+        (g.dt.getMonth() + 1) + '/' + g.dt.getDate() + '（' + WEEK[g.dt.getDay()] + '）';
+      var head = rows2.length;
+      rows2.push({ kind: 'sub', make: function () { return el('div', 'sub', label); }, group: -1 });
+      g.items.forEach(function (r) { rows2.push({ kind: 'item', make: item(r), group: head }); });
     });
-    if (!any) box2.appendChild(el('p', 'muted', 'これから1週間の予定は、ありません。'));
-    fitList(box2);
+    if (!rows2.length) rows2.push({ kind: 'note', make: note('これからの予定は、ありません。'), group: -1 });
+    pagedList('sched2', rows2);
+  }
+
+  /* ---------- 入りきらない一覧は「▲ 上へ／下へ ▼」でページを送る（母はスワイプできないため） ---------- */
+  // rows：{ kind: 'sub'（日付の見出し）| 'item' | 'note', make: 要素を作る関数, group: 見出しの番号（ページの頭に見出しを付け直すため） }
+  var pagers = {};
+  function pagedList(id, rows) {
+    var box = $(id), pg = $('pg-' + id);
+    var st = pagers[id] || (pagers[id] = { page: 0, starts: [0], rows: [] });
+    st.rows = rows;
+    if (!pg.getAttribute('data-bound')) {
+      pg.setAttribute('data-bound', '1');
+      pg.querySelector('.up').addEventListener('click', function () { if (st.page > 0) { st.page--; showPage(id); } });
+      pg.querySelector('.down').addEventListener('click', function () { if (st.page < st.starts.length - 1) { st.page++; showPage(id); } });
+    }
+    function build(from, to) {
+      clear(box);
+      if (from < to && rows[from].kind === 'item' && rows[from].group >= 0) box.appendChild(rows[rows[from].group].make());
+      for (var k = from; k < to; k++) box.appendChild(rows[k].make());
+    }
+    pg.hidden = true;
+    build(0, rows.length);
+    if (!box.clientHeight || box.scrollHeight <= box.clientHeight + 1) { st.starts = [0]; st.page = 0; return; }
+    // 入りきらない：ページ送りのボタンを出して、1ページに入る行を前から順に数える
+    pg.hidden = false;
+    var starts = [], i = 0;
+    while (i < rows.length) {
+      var s = i;
+      starts.push(s);
+      clear(box);
+      if (rows[i].kind === 'item' && rows[i].group >= 0) box.appendChild(rows[rows[i].group].make());
+      while (i < rows.length) {
+        box.appendChild(rows[i].make());
+        if (box.scrollHeight > box.clientHeight + 1 && i > s) break;
+        i++;
+      }
+      if (i < rows.length && i - 1 > s && rows[i - 1].kind === 'sub') i--;  // 見出しだけをページの最後に残さない
+    }
+    st.starts = starts;
+    if (st.page >= starts.length) st.page = starts.length - 1;
+    showPage(id);
+  }
+  function showPage(id) {
+    var st = pagers[id], box = $(id), pg = $('pg-' + id), rows = st.rows;
+    var from = st.starts[st.page], to = st.starts[st.page + 1] || rows.length;
+    clear(box);
+    if (from < to && rows[from].kind === 'item' && rows[from].group >= 0) box.appendChild(rows[rows[from].group].make());
+    for (var k = from; k < to; k++) box.appendChild(rows[k].make());
+    pg.querySelector('span').textContent = (st.page + 1) + ' / ' + st.starts.length;
+    pg.querySelector('.up').disabled = st.page === 0;
+    pg.querySelector('.down').disabled = st.page >= st.starts.length - 1;
   }
 
   function tapItem(when, what, onTap) {
@@ -480,17 +545,17 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
       if (done) setTimeout(finish, 1500 + text.length * 250);
     } catch (e) { finish(); }
   }
-  // きょうの予定に続けて、これから1週間の予定（予定のある日だけ）を読む
+  // きょうの予定に続けて、7日先までの予定（予定のある日だけ）を読む。それより先は長くなるので読まない
   $('btn-read').addEventListener('click', function () {
     function list(items) {
       return items.map(function (r) { return (r['時刻'] ? spokenTime(r['時刻']) + 'に、' : '') + r['内容']; }).join('。 ');
     }
-    var text = days[0] && days[0].items.length ? 'きょうの予定は、' + list(days[0].items) + '、です。' : 'きょうの予定は、ありません。';
-    var week = days.slice(1).filter(function (day) { return day.items.length; });
+    var text = todayItems.length ? 'きょうの予定は、' + list(todayItems) + '、です。' : 'きょうの予定は、ありません。';
+    var week = upcoming.filter(function (g) { return g.diff <= 7; });
     if (!week.length) text += ' これから1週間の予定は、ありません。';
-    week.forEach(function (day, k) {
-      var who = (day.dt - days[0].dt) / 864e5 === 1 ? 'あした' : (day.dt.getMonth() + 1) + '月' + day.dt.getDate() + '日、' + WEEK[day.dt.getDay()] + '曜日';
-      text += ' ' + who + 'は、' + list(day.items) + '。';
+    week.forEach(function (g) {
+      var who = g.diff === 1 ? 'あした' : (g.dt.getMonth() + 1) + '月' + g.dt.getDate() + '日、' + WEEK[g.dt.getDay()] + '曜日';
+      text += ' ' + who + 'は、' + list(g.items) + '。';
     });
     speak(text);
   });
@@ -1046,14 +1111,16 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     ]);
   }
   function renderMemos() {
-    var box = $('memos'); clear(box);
-    var rows = (data['メモ'] || []).filter(function (o) { return (o['内容'] || '').trim(); }).slice().reverse();
-    if (!rows.length) { box.appendChild(el('p', 'muted', 'メモは、ありません。')); return; }
-    rows.forEach(function (o) {
-      var m = (o['日時'] || '').match(/(\d{1,2})\D+(\d{1,2})\D+(\d{1,2}:\d{2})/);
-      box.appendChild(tapItem(m ? (+m[1]) + '/' + (+m[2]) + ' ' + m[3] : '', el('div', 'what', o['内容']), function () { memoMenu(o); }));
+    // 新しいメモから順に。入りきらない分は「▲ 上へ／下へ ▼」で見られる
+    var memos = (data['メモ'] || []).filter(function (o) { return (o['内容'] || '').trim(); }).slice().reverse();
+    var rows = memos.map(function (o) {
+      return { kind: 'item', group: -1, make: function () {
+        var m = (o['日時'] || '').match(/(\d{1,2})\D+(\d{1,2})\D+(\d{1,2}:\d{2})/);
+        return tapItem(m ? (+m[1]) + '/' + (+m[2]) + ' ' + m[3] : '', el('div', 'what', o['内容']), function () { memoMenu(o); });
+      } };
     });
-    fitList(box);
+    if (!rows.length) rows.push({ kind: 'note', group: -1, make: function () { return el('p', 'muted', 'メモは、ありません。'); } });
+    pagedList('memos', rows);
   }
 
   $('btn-add-sched').addEventListener('click', function () { addByVoice('schedule'); });
