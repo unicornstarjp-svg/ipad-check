@@ -182,7 +182,10 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     </div>
     <!-- 右：これから1週間の予定 -->
     <div class="card week">
-      <h2>これからの予定</h2>
+      <div class="chead">
+        <h2>これからの予定</h2>
+        <button type="button" class="big mini" id="btn-regular">🔁 いつもの予定</button>
+      </div>
       <div class="list" id="sched2"></div>
         <div class="cpager" id="pg-sched2" hidden><button type="button" class="big mini up">▲ 上へ</button><span></span><button type="button" class="big mini down">下へ ▼</button></div>
     </div>
@@ -236,6 +239,19 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     <button type="button" class="big small" id="call-prev">◀ まえ</button>
     <span id="call-info"></span>
     <button type="button" class="big small" id="call-next">つぎ ▶</button>
+  </div>
+</section>
+
+<!-- いつもの予定（くりかえし）の一覧。さわると変える・消す -->
+<section id="v-regular" class="view" hidden>
+  <div class="bar">
+    <button type="button" class="big small" data-back="home">もどる</button>
+    <h2>いつもの予定（くりかえし）</h2>
+    <button type="button" class="big small" id="btn-add-regular">🎤 いつもの予定を話す</button>
+  </div>
+  <div class="card fill" style="flex:1">
+    <div class="list" id="regs"></div>
+    <div class="cpager" id="pg-regs" hidden><button type="button" class="big mini up">▲ 上へ</button><span></span><button type="button" class="big mini down">下へ ▼</button></div>
   </div>
 </section>
 
@@ -294,7 +310,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04t';
+  var VERSION = '2026-10-04u';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -312,7 +328,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
 
   /* ---------- 画面の切り替え ---------- */
-  var views = ['home', 'songs', 'tv', 'call', 'play', 'set'];
+  var views = ['home', 'songs', 'tv', 'call', 'regular', 'play', 'set'];
   function show(name) {
     views.forEach(function (v) { $('v-' + v).hidden = (v !== name); });
     if (name !== 'play') stopPlayer();
@@ -378,15 +394,37 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     var dt = new Date(y, mo - 1, d);
     return dt.getMonth() === mo - 1 ? dt : null;
   }
-  // 「毎週火」「毎週月・木」「毎日」→ 曜日の番号の一覧（0=日）。毎週の予定でなければ null
-  function weeklyDays(s) {
-    s = (s || '').trim();
-    if (/^毎日/.test(s)) return [0, 1, 2, 3, 4, 5, 6];
-    var m = s.match(/^毎週\s*(.+)$/);
-    if (!m) return null;
-    var days = [];
-    WEEK.forEach(function (w, i) { if (m[1].indexOf(w) >= 0) days.push(i); });
-    return days.length ? days : null;
+  /* ---------- くりかえしの予定 ----------
+     日付の欄が「毎日」「毎週火」「毎週月木」「毎月15日」「毎月第2水」「毎月最終土」の時。くりかえしでなければ null */
+  function recurRule(s) {
+    s = String(s || '').trim().replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+    var m;
+    if (/^毎日/.test(s)) return { type: 'daily' };
+    if ((m = s.match(/^毎週\s*(.+)$/))) {
+      var ds = [];
+      WEEK.forEach(function (w, i) { if (m[1].indexOf(w) >= 0) ds.push(i); });
+      return ds.length ? { type: 'weekly', days: ds } : null;
+    }
+    if ((m = s.match(/^毎月\s*(\d{1,2})\s*日/))) return { type: 'monthly', day: +m[1] };
+    if ((m = s.match(/^毎月\s*第\s*([1-5])\s*([月火水木金土日])/))) return { type: 'nth', n: +m[1], wd: WEEK.indexOf(m[2]) };
+    if ((m = s.match(/^毎月\s*最終\s*([月火水木金土日])/))) return { type: 'nth', n: -1, wd: WEEK.indexOf(m[1]) };
+    return null;
+  }
+  // その日がくりかえしの日にあたるか
+  function occursOn(rule, dt) {
+    if (rule.type === 'daily') return true;
+    if (rule.type === 'weekly') return rule.days.indexOf(dt.getDay()) >= 0;
+    if (rule.type === 'monthly') return dt.getDate() === rule.day;
+    if (dt.getDay() !== rule.wd) return false;
+    if (rule.n === -1) return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 7).getMonth() !== dt.getMonth();  // 最後の○曜日
+    return Math.ceil(dt.getDate() / 7) === rule.n;  // 第○○曜日
+  }
+  // 「毎週 火曜日」「毎月15日」「毎月 第2 水曜日」のような言葉
+  function recurText(rule) {
+    if (rule.type === 'daily') return '毎日';
+    if (rule.type === 'weekly') return '毎週 ' + rule.days.map(function (i) { return WEEK[i] + '曜日'; }).join('と');
+    if (rule.type === 'monthly') return '毎月' + rule.day + '日';
+    return '毎月 ' + (rule.n === -1 ? '最後の' : '第' + rule.n + ' ') + WEEK[rule.wd] + '曜日';
   }
   function spokenTime(t) {
     var m = (t || '').match(/(\d{1,2})\D+(\d{2})/);
@@ -394,37 +432,53 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     var h = +m[1], ampm = h === 12 ? 'お昼の' : h > 12 ? '午後' : '午前';
     return ampm + (h > 12 ? h - 12 : h) + '時' + (m[2] === '00' ? '' : (+m[2]) + '分');
   }
-  // todayItems：きょうの予定（毎週の予定のうち、きょうの曜日のものも入る）
-  // upcoming：あした以降の日付の予定を日ごとにまとめたもの（日数の上限なし）。毎週の予定（定期）は入れない
-  var todayItems = [], upcoming = [];
+  // todayItems：きょうの予定（くりかえしの予定のうち、きょうにあたるものも入る）
+  // upcoming：あした以降の予定を日ごとにまとめたもの（日付の予定は日数の上限なし）。
+  //   くりかえしの予定は、毎週は7日先まで、毎月は次の1回だけを混ぜる（🔁を付ける）。毎日はきょうだけ
+  // 中身は { r: 表の1行, rec: くりかえしか }
+  var todayItems = [], upcoming = [], regulars = [];
   function renderSchedule() {
     var rows = data['予定'] || [], now = new Date();
     var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     var byDay = {};
-    todayItems = []; upcoming = [];
+    todayItems = []; upcoming = []; regulars = [];
+    function addDay(diff, dt, x) {
+      if (!byDay[diff]) { byDay[diff] = { dt: dt, diff: diff, items: [] }; upcoming.push(byDay[diff]); }
+      byDay[diff].items.push(x);
+    }
     rows.forEach(function (r) {
       if (!(r['内容'] || '').trim()) return;
-      var wk = weeklyDays(r['日付']);
-      if (wk) { if (wk.indexOf(today.getDay()) >= 0) todayItems.push(r); return; }
+      var rule = recurRule(r['日付']);
+      if (rule) {
+        regulars.push({ r: r, rule: rule });
+        if (occursOn(rule, today)) todayItems.push({ r: r, rec: true });
+        if (rule.type === 'daily') return;
+        var limit = rule.type === 'weekly' ? 7 : 62;
+        for (var d = 1; d <= limit; d++) {
+          var dt2 = new Date(today.getFullYear(), today.getMonth(), today.getDate() + d);
+          if (!occursOn(rule, dt2)) continue;
+          addDay(d, dt2, { r: r, rec: true });
+          if (rule.type !== 'weekly') break;  // 毎月の予定は次の1回だけ
+        }
+        return;
+      }
       var dt = parseDate(r['日付']);
       if (!dt) return;
       var diff = Math.round((dt - today) / 864e5);
-      if (diff === 0) todayItems.push(r);
-      else if (diff > 0) {
-        if (!byDay[diff]) { byDay[diff] = { dt: dt, diff: diff, items: [] }; upcoming.push(byDay[diff]); }
-        byDay[diff].items.push(r);
-      }
+      if (diff === 0) todayItems.push({ r: r, rec: false });
+      else if (diff > 0) addDay(diff, dt, { r: r, rec: false });
     });
     // 時刻は「9:00」と「15:00」を文字で比べると順番が狂うので、分に直して比べる（時刻なしは先頭）
     var mins = function (s) { var m = String(s || '').match(/(\d{1,2})\D+(\d{2})/); return m ? +m[1] * 60 + +m[2] : -1; };
-    var byTime = function (a, b) { return mins(a['時刻']) - mins(b['時刻']); };
+    var byTime = function (a, b) { return mins(a.r['時刻']) - mins(b.r['時刻']); };
     todayItems.sort(byTime);
     upcoming.sort(function (a, b) { return a.diff - b.diff; });
     upcoming.forEach(function (g) { g.items.sort(byTime); });
 
-    function item(r) {
+    function item(x) {
+      var r = x.r;
       return function () {
-        var what = el('div', 'what', r['内容']);
+        var what = el('div', 'what', (x.rec ? '🔁 ' : '') + r['内容']);
         if ((r['備考'] || '').trim()) what.appendChild(el('span', 'note', r['備考']));
         return tapItem(r['時刻'] || '', what, function () { scheduleMenu(r); });
       };
@@ -432,7 +486,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     function note(text) { return function () { return el('p', 'muted', text); }; }
 
     // きょうの欄
-    var rows1 = todayItems.map(function (r) { return { kind: 'item', make: item(r), group: -1 }; });
+    var rows1 = todayItems.map(function (x) { return { kind: 'item', make: item(x), group: -1 }; });
     if (!rows1.length) rows1.push({ kind: 'note', make: note('きょうの予定は、ありません。'), group: -1 });
     pagedList('sched', rows1);
 
@@ -443,11 +497,30 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
         (g.dt.getMonth() + 1) + '/' + g.dt.getDate() + '（' + WEEK[g.dt.getDay()] + '）';
       var head = rows2.length;
       rows2.push({ kind: 'sub', make: function () { return el('div', 'sub', label); }, group: -1 });
-      g.items.forEach(function (r) { rows2.push({ kind: 'item', make: item(r), group: head }); });
+      g.items.forEach(function (x) { rows2.push({ kind: 'item', make: item(x), group: head }); });
     });
     if (!rows2.length) rows2.push({ kind: 'note', make: note('これからの予定は、ありません。'), group: -1 });
     pagedList('sched2', rows2);
   }
+
+  // いつもの予定（くりかえし）の一覧：毎日→毎週→毎月の順。さわると変える・消す
+  function renderRegular() {
+    var order = { daily: 0, weekly: 1, monthly: 2, nth: 3 };
+    var list = regulars.slice().sort(function (a, b) { return order[a.rule.type] - order[b.rule.type]; });
+    var rows = list.map(function (x) {
+      return { kind: 'item', group: -1, make: function () {
+        var what = el('div', 'what', x.r['内容']);
+        if ((x.r['備考'] || '').trim()) what.appendChild(el('span', 'note', x.r['備考']));
+        return tapItem(recurText(x.rule) + (x.r['時刻'] ? ' ' + x.r['時刻'] : ''), what, function () { scheduleMenu(x.r); });
+      } };
+    });
+    if (!rows.length) rows.push({ kind: 'note', group: -1, make: function () {
+      return el('p', 'muted', 'いつもの予定は、まだありません。「いつもの予定を話す」で、「毎週火曜の10時はオレンジルーム」のように話してください。');
+    } });
+    pagedList('regs', rows);
+  }
+  $('btn-regular').addEventListener('click', function () { show('regular'); renderRegular(); });
+  $('btn-add-regular').addEventListener('click', function () { addByVoice('schedule'); });
 
   /* ---------- 入りきらない一覧は「▲ 上へ／下へ ▼」でページを送る（母はスワイプできないため） ---------- */
   // rows：{ kind: 'sub'（日付の見出し）| 'item' | 'note', make: 要素を作る関数, group: 見出しの番号（ページの頭に見出しを付け直すため） }
@@ -548,7 +621,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   // きょうの予定に続けて、7日先までの予定（予定のある日だけ）を読む。それより先は長くなるので読まない
   $('btn-read').addEventListener('click', function () {
     function list(items) {
-      return items.map(function (r) { return (r['時刻'] ? spokenTime(r['時刻']) + 'に、' : '') + r['内容']; }).join('。 ');
+      return items.map(function (x) { return (x.r['時刻'] ? spokenTime(x.r['時刻']) + 'に、' : '') + x.r['内容']; }).join('。 ');
     }
     var text = todayItems.length ? 'きょうの予定は、' + list(todayItems) + '、です。' : 'きょうの予定は、ありません。';
     var week = upcoming.filter(function (g) { return g.diff <= 7; });
@@ -1024,17 +1097,17 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
         if (r.action === 'delete') {
           confirmAndSend(describe(b) + '。この予定を消します。いいですか？', deleteReq('予定', b), '消しました。', again);
         } else if (r.action === 'update') {
-          var sameDay = !r.weekly && (r.dates || [])[0] && parseDate(r.dates[0]) && parseDate(b['日付']) &&
+          var sameDay = !r.weekly && !r.repeat && (r.dates || [])[0] && parseDate(r.dates[0]) && parseDate(b['日付']) &&
                         +parseDate(r.dates[0]) === +parseDate(b['日付']) && r.content === b['内容'];
           var q = sameDay
             ? describe(b) + 'の時間を、' + (r.time ? spokenTime(r.time) + 'に' : '時刻なしに') + '変えます。いいですか？'
             : describe(b) + 'を、' + after + 'に変えます。いいですか？';
           confirmAndSend(q,
             { kind: 'updateSchedule', row: b._row, expect: { '日付': b['日付'], '内容': b['内容'] },
-              weekly: r.weekly, dates: r.dates, time: r.time, content: r.content, note: r.note }, '変えました。', again);
+              repeat: r.repeat || '', weekly: r.weekly, dates: r.dates, time: r.time, content: r.content, note: r.note }, '変えました。', again);
         } else {
           confirmAndSend(after + '。これでいいですか？',
-            { kind: 'addSchedule', dates: r.dates || (r.date ? [r.date] : []), weekly: r.weekly || '', time: r.time, content: r.content, note: r.note }, '書きました。', again);
+            { kind: 'addSchedule', dates: r.dates || (r.date ? [r.date] : []), repeat: r.repeat || '', weekly: r.weekly || '', time: r.time, content: r.content, note: r.note }, '書きました。', again);
         }
       }, function () { failed('つながりませんでした。'); });
     }
@@ -1068,9 +1141,9 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   }
   // AIの結果 → 「10月8日（木）と10月9日（金）、3時に、」のような読み上げ用の言葉
   function whenText(r) {
-    var when;
-    if (r.weekly) {
-      when = r.weekly === '月火水木金土日' ? '毎日、' : '毎週 ' + r.weekly.split('').map(function (w) { return w + '曜日'; }).join('と') + '、';
+    var when, rule = recurRule(r.repeat || (r.weekly ? '毎週' + r.weekly : ''));
+    if (rule) {
+      when = recurText(rule) + '、';
     } else {
       when = (r.dates || (r.date ? [r.date] : [])).map(function (s) {
         var m = s.split('/'), dt = new Date(+m[0], +m[1] - 1, +m[2]);
@@ -1082,8 +1155,8 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   // 表の1行 → 「10月8日（木）、3時の、プール」「毎週 火曜日の、オレンジルーム」
   function describe(o) {
     var d = o['日付'] || '', when;
-    var wk = weeklyDays(d);
-    if (wk) when = wk.length === 7 ? '毎日' : '毎週 ' + wk.map(function (i) { return WEEK[i] + '曜日'; }).join('と');
+    var rule = recurRule(d);
+    if (rule) when = recurText(rule);
     else {
       var dt = parseDate(d);
       when = dt ? (dt.getMonth() + 1) + '月' + dt.getDate() + '日（' + WEEK[dt.getDay()] + '）' : d;
@@ -1093,7 +1166,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
 
   /* ---------- さわって消す・変える ---------- */
   function scheduleMenu(o) {
-    dialog(describe(o) + (weeklyDays(o['日付']) ? '\n（くりかえしの予定）' : '') + '\nどうしますか？', [
+    dialog(describe(o) + (recurRule(o['日付']) ? '\n（くりかえしの予定。消すと、くりかえし全部が消えます）' : '') + '\nどうしますか？', [
       { label: '変える（話す）', cls: 'song', fn: function () { addByVoice('schedule', { target: o }); } },
       { label: '消す', cls: 'help', fn: function () {
         confirmAndSend(describe(o) + '。この予定を消します。いいですか？', deleteReq('予定', o), '消しました。', null);
@@ -1131,6 +1204,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   // メモの欄の高さが決まってから、残りの高さで予定を並べる
   function renderAll() {
     renderMemos(); renderSchedule(); renderSingers();
+    if (!$('v-regular').hidden) renderRegular();
     // 並べた直後は周りの高さがまだ落ち着いていないことがあるので、次の描画でもう一度並べ直す
     requestAnimationFrame(function () { setTimeout(function () { renderMemos(); renderSchedule(); }, 50); });
   }
