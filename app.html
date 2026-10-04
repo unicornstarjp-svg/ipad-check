@@ -62,6 +62,8 @@ p{margin:0}
 .item .what{font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .item .note{font-weight:400;color:var(--muted);font-size:18px;margin-left:10px}
 .item.tap{cursor:pointer}
+.item.off .c, .item.off .when{color:var(--muted);text-decoration:line-through}  /* その日はお休みのくりかえし（予定名と時刻だけに線） */
+.item.off .note{color:var(--bad);font-weight:700}
 .item .go{color:var(--muted);font-size:30px;line-height:1;flex:0 0 auto}
 .btns{display:grid;grid-template-columns:1fr 1fr;gap:14px;flex:0 0 auto;height:118px}
 
@@ -311,7 +313,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04x';
+  var VERSION = '2026-10-04y';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -420,6 +422,13 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     if (rule.n === -1) return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 7).getMonth() !== dt.getMonth();  // 最後の○曜日
     return Math.ceil(dt.getDate() / 7) === rule.n;  // 第○○曜日
   }
+  // 「休み」の欄（例：2026/10/6、10/13）に、その日が書かれていればお休み
+  function isSkipped(r, dt) {
+    return String(r['休み'] || '').split(/[,、，\s]+/).some(function (s) {
+      var d = parseDate(s);
+      return d && +d === +dt;
+    });
+  }
   // 「毎週 火曜日」「毎月15日」「毎月 第2 水曜日」のような言葉
   function recurText(rule) {
     if (rule.type === 'daily') return '毎日';
@@ -452,13 +461,13 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
       var rule = recurRule(r['日付']);
       if (rule) {
         regulars.push({ r: r, rule: rule });
-        if (occursOn(rule, today)) todayItems.push({ r: r, rec: true });
+        if (occursOn(rule, today)) todayItems.push({ r: r, rec: true, dt: today, off: isSkipped(r, today) });
         if (rule.type === 'daily') return;
         var limit = rule.type === 'weekly' ? 7 : 62;
         for (var d = 1; d <= limit; d++) {
           var dt2 = new Date(today.getFullYear(), today.getMonth(), today.getDate() + d);
           if (!occursOn(rule, dt2)) continue;
-          addDay(d, dt2, { r: r, rec: true });
+          addDay(d, dt2, { r: r, rec: true, dt: dt2, off: isSkipped(r, dt2) });
           if (rule.type !== 'weekly') break;  // 毎月の予定は次の1回だけ
         }
         return;
@@ -479,9 +488,13 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     function item(x) {
       var r = x.r;
       return function () {
-        var what = el('div', 'what', (x.rec ? '🔁 ' : '') + r['内容']);
-        if ((r['備考'] || '').trim()) what.appendChild(el('span', 'note', r['備考']));
-        return tapItem(r['時刻'] || '', what, function () { scheduleMenu(r); });
+        var what = el('div', 'what');
+        what.appendChild(el('span', 'c', (x.rec ? '🔁 ' : '') + r['内容']));
+        if (x.off) what.appendChild(el('span', 'note', 'この日はお休み'));
+        else if ((r['備考'] || '').trim()) what.appendChild(el('span', 'note', r['備考']));
+        var row = tapItem(r['時刻'] || '', what, function () { scheduleMenu(r, x); });
+        if (x.off) row.classList.add('off');
+        return row;
       };
     }
     function note(text) { return function () { return el('p', 'muted', text); }; }
@@ -622,7 +635,10 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   // きょうの予定に続けて、7日先までの予定（予定のある日だけ）を読む。それより先は長くなるので読まない
   $('btn-read').addEventListener('click', function () {
     function list(items) {
-      return items.map(function (x) { return (x.r['時刻'] ? spokenTime(x.r['時刻']) + 'に、' : '') + x.r['内容']; }).join('。 ');
+      return items.map(function (x) {
+        if (x.off) return x.r['内容'] + 'は、お休み';
+        return (x.r['時刻'] ? spokenTime(x.r['時刻']) + 'に、' : '') + x.r['内容'];
+      }).join('。 ');
     }
     var text = todayItems.length ? 'きょうの予定は、' + list(todayItems) + '、です。' : 'きょうの予定は、ありません。';
     var week = upcoming.filter(function (g) { return g.diff <= 7; });
@@ -1111,6 +1127,13 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
           return;
         }
         var b = r.before, after = whenText(r) + r.content;
+        if (r.action === 'skip') {
+          // くりかえしの予定を、その日だけ休む（「今週の火曜のオレンジルームは休み」）
+          var sd = parseDate((r.dates || [])[0]);
+          if (!sd) { failed('うまく分かりませんでした。'); return; }
+          confirmAndSend(dayText(sd) + 'の' + b['内容'] + 'を、お休みにします。いいですか？', skipReq(b, sd, true), 'お休みにしました。', again);
+          return;
+        }
         if (r.action === 'delete') {
           confirmAndSend(describe(b) + '。この予定を消します。いいですか？', deleteReq('予定', b), '消しました。', again);
         } else if (r.action === 'update') {
@@ -1182,7 +1205,27 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   }
 
   /* ---------- さわって消す・変える ---------- */
-  function scheduleMenu(o) {
+  // x：一覧のどの日の予定をさわったか（くりかえしの予定なら dt と off がある）
+  function scheduleMenu(o, x) {
+    if (x && x.rec && x.dt) {
+      // くりかえしの予定は、その日だけ休む／休みをやめる、を先に出す
+      var day = dayText(x.dt);
+      dialog(day + '　' + describe(o) + (x.off ? '\n（この日はお休み）' : '') + '\nどうしますか？', [
+        x.off
+          ? { label: 'お休みをやめる', cls: 'song', fn: function () {
+              confirmAndSend(day + 'の' + o['内容'] + 'の、お休みをやめます。いいですか？', skipReq(o, x.dt, false), 'もとにもどしました。', null);
+            } }
+          : { label: 'この日だけ休みにする', cls: 'song', fn: function () {
+              confirmAndSend(day + 'の' + o['内容'] + 'を、お休みにします。いいですか？', skipReq(o, x.dt, true), 'お休みにしました。', null);
+            } },
+        { label: '変える（話す）', fn: function () { addByVoice('schedule', { target: o }); } },
+        { label: 'くりかえしを全部消す', cls: 'help', fn: function () {
+          confirmAndSend(describe(o) + '。くりかえしを全部消します。いいですか？', deleteReq('予定', o), '消しました。', null);
+        } },
+        { label: 'やめる', fn: closeDialog }
+      ]);
+      return;
+    }
     dialog(describe(o) + (recurRule(o['日付']) ? '\n（くりかえしの予定。消すと、くりかえし全部が消えます）' : '') + '\nどうしますか？', [
       { label: '変える（話す）', cls: 'song', fn: function () { addByVoice('schedule', { target: o }); } },
       { label: '消す', cls: 'help', fn: function () {
@@ -1190,6 +1233,11 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
       } },
       { label: 'やめる', fn: closeDialog }
     ]);
+  }
+  function dayText(dt) { return (dt.getMonth() + 1) + '月' + dt.getDate() + '日（' + WEEK[dt.getDay()] + '）'; }
+  function ymd(dt) { return dt.getFullYear() + '/' + (dt.getMonth() + 1) + '/' + dt.getDate(); }
+  function skipReq(o, dt, on) {
+    return { kind: 'skipDate', row: o._row, expect: { '日付': o['日付'], '内容': o['内容'] }, date: ymd(dt), on: on };
   }
   function memoMenu(o) {
     dialog('「' + o['内容'] + '」\nこのメモを、どうしますか？', [
