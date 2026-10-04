@@ -148,6 +148,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   </div>
   <div class="btns">
     <button type="button" class="big song" id="btn-songs">歌を聴く</button>
+    <button type="button" class="big song" id="btn-call">テレビ電話</button>
     <a class="big" href="https://tver.jp/" id="btn-tv">TVer</a>
     <!-- アプリを直接開く。Prime Video は aiv://、みてねは公表されたアドレスが無いので、iPadの「ショートカット」アプリに
          「みてね」という名前で「Appを開く：みてね」を作っておき、それを呼ぶ -->
@@ -156,6 +157,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     <button type="button" class="big" id="btn-add-sched">予定を<br>話す</button>
     <button type="button" class="big" id="btn-read">予定を<br>読んでもらう</button>
     <button type="button" class="big" id="btn-memo">メモを<br>話す</button>
+    <button type="button" class="big" id="btn-reload">画面を<br>新しくする</button>
     <button type="button" class="big help" id="btn-help">困った</button>
   </div>
 </section>
@@ -189,6 +191,19 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     <button type="button" class="big small" id="tv-prev">◀ まえ</button>
     <span id="tv-info"></span>
     <button type="button" class="big small" id="tv-next">つぎ ▶</button>
+  </div>
+</section>
+
+<section id="v-call" class="view" hidden>
+  <div class="bar">
+    <button type="button" class="big small" data-back="home">もどる</button>
+    <h2>だれにかけますか</h2>
+  </div>
+  <div class="pagegrid" id="contacts"></div>
+  <div class="bar pager" id="call-pager" hidden>
+    <button type="button" class="big small" id="call-prev">◀ まえ</button>
+    <span id="call-info"></span>
+    <button type="button" class="big small" id="call-next">つぎ ▶</button>
   </div>
 </section>
 
@@ -245,7 +260,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04k';
+  var VERSION = '2026-10-04l';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -263,7 +278,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
 
   /* ---------- 画面の切り替え ---------- */
-  var views = ['home', 'songs', 'tv', 'play', 'set'];
+  var views = ['home', 'songs', 'tv', 'call', 'play', 'set'];
   function show(name) {
     views.forEach(function (v) { $('v-' + v).hidden = (v !== name); });
     if (name !== 'play') stopPlayer();
@@ -593,6 +608,60 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     if (!a) return;
     e.preventDefault();
     openApp(a.href, a.getAttribute('data-name') || 'アプリ', a.hasAttribute('data-newwin'));
+  });
+
+  /* ---------- テレビ電話（FaceTime） ---------- */
+  // 家族が「連絡先」タブに書いた人を大きなボタンにする。母が自分で押してかける形だけ（自動でつながる仕組みは作らない）
+  var callPage = 0;
+  function facetimeAddr(s) {
+    s = String(s || '').trim();
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return s;  // メールアドレス（Apple ID）
+    var tel = s.replace(/[\s\-()（）ー－]/g, '');
+    return /^\+?\d{6,15}$/.test(tel) ? tel : null;      // 電話番号
+  }
+  function contacts() {
+    return (data['連絡先'] || []).filter(function (o) { return (o['名前'] || '').trim() && facetimeAddr(o['FaceTime']); });
+  }
+  function renderContacts() {
+    var box = $('contacts'); clear(box);
+    var rows = contacts(), pages = Math.max(1, Math.ceil(rows.length / PAGE));
+    if (callPage >= pages) callPage = pages - 1;
+    $('call-pager').hidden = pages <= 1;
+    $('call-info').textContent = (callPage + 1) + ' / ' + pages;
+    $('call-prev').disabled = callPage === 0;
+    $('call-next').disabled = callPage === pages - 1;
+    if (!rows.length) { box.appendChild(el('p', 'muted', 'まだ、だれも登録されていません。家族に伝えてください。')); return; }
+    rows.slice(callPage * PAGE, callPage * PAGE + PAGE).forEach(function (o) {
+      var b = el('button', 'big song', o['名前'].trim());
+      b.type = 'button';
+      b.addEventListener('click', function () { callTo(o); });
+      box.appendChild(b);
+    });
+  }
+  function callTo(o) {
+    var name = o['名前'].trim();
+    var text = name + 'に、テレビ電話をかけます。\n「発信」と出たら、「発信」をさわってください。\nおわったら、赤いボタンで切ります。';
+    speak(text.replace(/\n/g, ''));
+    dialog(text, [
+      { label: 'かける', cls: 'song', href: 'facetime://' + facetimeAddr(o['FaceTime']),
+        fn: function () { try { window.speechSynthesis.cancel(); } catch (e) {} setTimeout(closeDialog, 500); } },
+      { label: 'やめる', fn: function () { try { window.speechSynthesis.cancel(); } catch (e) {} closeDialog(); } }
+    ]);
+  }
+  $('btn-call').addEventListener('click', function () { callPage = 0; renderContacts(); show('call'); });
+  $('call-prev').addEventListener('click', function () { if (callPage > 0) { callPage--; renderContacts(); } });
+  $('call-next').addEventListener('click', function () { callPage++; renderContacts(); });
+
+  /* ---------- 画面を新しくする ---------- */
+  // 家族が遠くから直した時に、母がこのボタン1つで最新の版と最新の予定にできるように
+  function freshReload() {
+    try { localStorage.removeItem('otasuke.reload'); } catch (e) {}
+    location.replace(location.pathname + '?r=' + Date.now());
+  }
+  $('btn-reload').addEventListener('click', function () {
+    dialog('画面を新しくしています…', []);
+    speak('画面を、新しくします。');
+    setTimeout(freshReload, 800);
   });
 
   /* ---------- TVerの番組ボタン ---------- */
@@ -945,7 +1014,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var cached = readJSON(KEY_CACHE);
   if (cached && cached.data) { data = cached.data; renderAll(); }
   load();
-  setInterval(load, 10 * 60 * 1000);
+  setInterval(load, 5 * 60 * 1000);
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'visible') { tick(); checkUpdate(); if (configured()) load(); }
   });
@@ -955,13 +1024,22 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     fetch('version.txt?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (v) {
       v = v.trim();
       if (!v || v === VERSION) return;
-      if (!$('v-play').hidden || !$('dlg').hidden || !$('v-set').hidden) return;
+      if (!homeIdle()) return;
       try { if (localStorage.getItem('otasuke.reload') === v) return; localStorage.setItem('otasuke.reload', v); } catch (e) { return; }
       location.replace(location.pathname + '?v=' + encodeURIComponent(v));
     }).catch(function () {});
   }
+  // 読み込み直してよいのは、ホーム画面でダイアログも出ていない時だけ（歌や番組を選んでいる途中で急に変わらないように）
+  function homeIdle() { return !$('v-home').hidden && $('dlg').hidden; }
   checkUpdate();
-  setInterval(checkUpdate, 30 * 60 * 1000);
+  setInterval(checkUpdate, 5 * 60 * 1000);
+
+  // 毎日、夜中（2〜5時）に1回読み直す。開きっぱなしでも、毎朝いちばん新しい版になるように
+  var openedAt = Date.now();
+  setInterval(function () {
+    var h = new Date().getHours();
+    if (h >= 2 && h < 5 && Date.now() - openedAt > 6 * 3600 * 1000 && homeIdle()) freshReload();
+  }, 10 * 60 * 1000);
 })();
 </script>
 </body>
