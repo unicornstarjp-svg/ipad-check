@@ -283,7 +283,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04q';
+  var VERSION = '2026-10-04r';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -943,7 +943,11 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
       api({ kind: 'parse', mode: mode, text: heard, target: target ? target._row : 0 }).then(function (r) {
         if (!r || !r.ok) { failed('うまく分かりませんでした。'); return; }
         if (mode === 'singer') {
-          confirmAndSend(r.name + '。これでいいですか？', { kind: 'addSinger', name: r.name }, '書きました。', again);
+          // 6人いっぱいの時は、4人目（入れ替わる枠でいちばん古い人）が外れることを先に伝える
+          var singers = (data['歌手'] || []).filter(function (o) { return (o['名前'] || '').trim(); });
+          var already = singers.some(function (o) { return o['名前'].trim() === r.name; });
+          var out = !already && singers.length >= 6 ? '\n（いちばん古い「' + singers[3]['名前'].trim() + '」は、外れます）' : '';
+          confirmAndSend(r.name + '。これでいいですか？' + out, { kind: 'addSinger', name: r.name }, '書きました。', again);
           return;
         }
         var b = r.before, after = whenText(r) + r.content;
