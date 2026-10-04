@@ -149,8 +149,8 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   <div class="btns">
     <button type="button" class="big song" id="btn-songs">歌を聴く</button>
     <a class="big" href="https://tver.jp/" id="btn-tv">TVer</a>
-    <a class="big" href="https://www.primevideo.com/">Amazon<br>プライム</a>
-    <a class="big" href="https://mitene.us/">みてね</a>
+    <a class="big ext" href="https://www.primevideo.com/" data-name="Amazonプライム">Amazon<br>プライム</a>
+    <a class="big ext" href="https://mitene.us/" data-name="みてね">みてね</a>
     <button type="button" class="big" id="btn-add-sched">予定を<br>話す</button>
     <button type="button" class="big" id="btn-read">予定を<br>読んでもらう</button>
     <button type="button" class="big" id="btn-memo">メモを<br>話す</button>
@@ -180,7 +180,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   <div class="bar">
     <button type="button" class="big small" data-back="home">もどる</button>
     <h2>どの番組を見ますか</h2>
-    <a class="big small" href="https://tver.jp/">TVerを開く</a>
+    <a class="big small ext" href="https://tver.jp/" data-name="TVer">TVerを開く</a>
   </div>
   <div class="pagegrid" id="programs"></div>
   <div class="bar pager" id="tv-pager" hidden>
@@ -243,7 +243,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04h';
+  var VERSION = '2026-10-04i';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -569,6 +569,24 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     $('btn-next').disabled = current.idx < 0 || n < 2;  // 最後の曲の「つぎ」は、最初の曲に戻る
     renderSongList();
   }
+  /* ---------- 別のアプリが開くボタン（TVer・Amazonプライム・みてね） ---------- */
+  // 開いたあと、おたすけへの戻り方が分からなくならないように、開く前に画面と声で案内する
+  function openApp(url, name) {
+    var text = name + 'をひらきます。\nおわったら、ホーム画面にもどって、「おたすけ」をさわると、ここにもどります。';
+    speak(text.replace('\n', ''));
+    dialog(text, [
+      { label: 'ひらく', cls: 'song', href: url, fn: function () { try { window.speechSynthesis.cancel(); } catch (e) {} setTimeout(closeDialog, 500); } },
+      { label: 'やめる', fn: function () { try { window.speechSynthesis.cancel(); } catch (e) {} closeDialog(); } }
+    ]);
+  }
+  // class="ext" のリンクは、すぐには開かずに案内を出す（あとから足した番組ボタンにも効くように、まとめて受ける）
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest ? e.target.closest('a.ext') : null;
+    if (!a) return;
+    e.preventDefault();
+    openApp(a.href, a.getAttribute('data-name') || 'アプリ');
+  });
+
   /* ---------- TVerの番組ボタン ---------- */
   // 家族が「番組」タブに書いた番組を大きなボタンにする。さわるとTVerアプリのその番組のページが開く。
   // 番組が1つもなければ、今までどおりTVerボタンでそのままTVerを開く
@@ -587,14 +605,15 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     $('tv-prev').disabled = tvPage === 0;
     $('tv-next').disabled = tvPage === pages - 1;
     rows.slice(tvPage * PAGE, tvPage * PAGE + PAGE).forEach(function (o) {
-      var a = el('a', 'big', o['番組名'].trim());
+      var a = el('a', 'big ext', o['番組名'].trim());
       a.href = o['URL'].trim();
+      a.setAttribute('data-name', o['番組名'].trim());
       box.appendChild(a);
     });
   }
   $('btn-tv').addEventListener('click', function (e) {
-    if (!programs().length) return;  // 番組がなければ、リンクのままTVerを開く
     e.preventDefault();
+    if (!programs().length) { openApp('https://tver.jp/', 'TVer'); return; }  // 番組がなければ、案内してからTVerを開く
     tvPage = 0; renderPrograms(); show('tv');
   });
   $('tv-prev').addEventListener('click', function () { if (tvPage > 0) { tvPage--; renderPrograms(); } });
@@ -651,8 +670,10 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     $('dlg-text').textContent = text;
     var box = $('dlg-btns'); clear(box);
     buttons.forEach(function (b) {
-      var n = el('button', 'big' + (b.cls ? ' ' + b.cls : ''), b.label); n.type = 'button';
-      n.addEventListener('click', b.fn);
+      // href があるボタンは本物のリンクにする（TVerなどは、リンクをさわった時だけアプリに切り替わるため）
+      var n = el(b.href ? 'a' : 'button', 'big' + (b.cls ? ' ' + b.cls : ''), b.label);
+      if (b.href) n.href = b.href; else n.type = 'button';
+      if (b.fn) n.addEventListener('click', b.fn);
       box.appendChild(n);
     });
     $('dlg').hidden = false;
