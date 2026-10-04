@@ -2,7 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- 拡大しないように固定する（母がダブルタップや指で広げて、画面が大きくなったまま戻せなくなるのを防ぐ） -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="おたすけ">
@@ -25,7 +26,7 @@
 *,*::before,*::after{box-sizing:border-box}
 /* 母はスワイプ（スクロール）ができないので、どの画面も1画面に収める。はみ出す分は出さずに「ほか○件」にする */
 html,body{height:100%}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;touch-action:manipulation}  /* ダブルタップで拡大しない */
 body{margin:0;overflow:hidden;background:var(--bg);color:var(--text);font-family:-apple-system,"Hiragino Sans","Yu Gothic",sans-serif;font-size:22px;line-height:1.5;
   padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
 main{height:100%;padding:14px 16px;display:flex;flex-direction:column}
@@ -310,7 +311,7 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
   var $ = function (id) { return document.getElementById(id); };
   var KEY_CFG = 'otasuke.cfg', KEY_CACHE = 'otasuke.cache';
   // 公開するたびに version.txt と同じ値に上げる。違っていたら、iPad が自分で読み込み直す
-  var VERSION = '2026-10-04w';
+  var VERSION = '2026-10-04x';
   var ENDPOINT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var cfg = readJSON(KEY_CFG) || {};
@@ -1248,6 +1249,19 @@ input[type=text],input[type=url],input[type=password]{width:100%;font:inherit;fo
     if (u && t && ENDPOINT_RE.test(u)) { cfg = { u: u, t: t }; writeJSON(KEY_CFG, cfg); }
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
   })();
+
+  /* ---------- 画面の大きさを変えない ---------- */
+  // iPadのSafariは user-scalable=no を無視することがあるので、指で広げる操作とダブルタップもここで止める
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (t) {
+    document.addEventListener(t, function (e) { e.preventDefault(); }, { passive: false });
+  });
+  document.addEventListener('touchmove', function (e) { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  var lastTap = 0;
+  document.addEventListener('touchend', function (e) {
+    var now = Date.now();
+    if (now - lastTap < 350) e.preventDefault();  // 2回目のすばやいタップは拡大に使わせない（ボタンの2度押しも防げる）
+    lastTap = now;
+  }, { passive: false });
 
   tick();
   setInterval(tick, 20000);
